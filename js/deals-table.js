@@ -207,8 +207,7 @@ function renderColFilter(col, deals) {
 
 function renderDealsTableRow(d) {
   const realIdx = state.deals.findIndex(x => x.id === d.id);
-  const cls = d.quality === "Неполный" ? "row-incomplete" : "";
-  return `<tr class="${cls}" data-id="${escapeHtml(d.id)}">
+  return `<tr data-id="${escapeHtml(d.id)}">
     ${DEALS_TABLE_COLS.map(c => c.render(d)).join("")}
     <td class="actions">
       <button class="btn btn-sm" onclick="openDealModal(${realIdx})" title="Редактировать">✏️</button>

@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ITMen — Пайплайн Q3</title>
+  <title>ITMen — Пайплайн</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <h1>ITMen Q3</h1>
+        <h1>ITMen</h1>
         <p>Пайплайн · Паспорт сделок · Скоринг</p>
       </div>
       <nav class="nav" id="nav"></nav>
@@ -35,15 +35,14 @@
 
   <div class="modal-overlay" id="deal-modal">
     <div class="modal">
-      <div class="modal-header">
+      <div class="modal-header modal-header-sticky">
         <h3>Паспорт сделки</h3>
-        <button class="btn btn-sm" onclick="closeModal('deal-modal')">✕</button>
+        <div class="modal-header-actions">
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveDealModal()">Сохранить</button>
+          <button type="button" class="btn btn-sm" onclick="closeModal('deal-modal')" aria-label="Закрыть">✕</button>
+        </div>
       </div>
       <div class="modal-body"></div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal('deal-modal')">Отмена</button>
-        <button class="btn btn-primary" onclick="saveDealModal()">Сохранить</button>
-      </div>
     </div>
   </div>
 

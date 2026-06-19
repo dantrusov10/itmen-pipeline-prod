@@ -166,7 +166,6 @@ function metricCard(label, value, sub) {
 function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
-  const f = state.pipelineFocus || {};
   const n = m.pipelineCount ?? m.deals?.length ?? 0;
   const owners = state.lists?.owners || [];
   const categories = ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
@@ -217,15 +216,6 @@ function renderPanel(m) {
       ${metricCard("Флаги риска", m.riskFlags, "критичные")}
       ${metricCard("Устарели", m.stale, "> 14 дней без обновления")}
       ${metricCard("Наблюдение / Отказ", (m.counts["Наблюдение"]||0) + (m.counts["Отказ"]||0))}
-    </div>
-
-    <div class="track-card" style="margin-bottom:1.5rem">
-      <h4>${escapeHtml(f.title || "Текущий пайплайн")}</h4>
-      <div class="meta">
-        <div><strong>Цель Q3:</strong> ${escapeHtml(f.goal)}</div>
-        <div><strong>Главный риск:</strong> ${escapeHtml(f.risk)}</div>
-        <div><strong>Следующий шаг:</strong> ${escapeHtml(f.nextStep)}</div>
-      </div>
     </div>
 
     <div class="section-title">Распределение по категориям</div>
@@ -613,17 +603,8 @@ async function openDealModalAsync(idx) {
     </div>
 
     <div class="form-section">
-      <div class="form-section-title">Следующий шаг и риски</div>
+      <div class="form-section-title">Риски</div>
       <div class="form-grid">
-        <div class="full">
-          <label>Тип следующего шага</label>
-          ${typeSelect("f-nextStepType", window.ITMEN_CONFIG?.nextStepTypes || [], d.nextStepType)}
-          <div class="artifact-hint" id="artifact-hint">Артефакт: ${escapeHtml(nextStepArtifact(d.nextStepType))}</div>
-        </div>
-        <div class="full">
-          <label>Комментарий к следующему шагу</label>
-          <textarea id="f-nextStepComment" placeholder="Конкретика: кто, что, когда">${escapeHtml(d.nextStepComment)}</textarea>
-        </div>
         <div class="full">
           <label>Критический риск</label>
           ${typeSelect("f-riskType", window.ITMEN_CONFIG?.riskTypes || [], d.riskType)}
@@ -645,7 +626,6 @@ async function openDealModalAsync(idx) {
       ${renderScoreSection(d, modalSuggestion)}
     </div>`;
 
-  document.getElementById("f-nextStepType")?.addEventListener("change", updateArtifactHint);
   toggleBudgetPlannedDate();
   document.getElementById("deal-modal").classList.add("open");
 }
@@ -655,12 +635,6 @@ function updateCommitHint() {
   const c = (window.ITMEN_CONFIG?.commitStatuses || []).find(x => x.id === id);
   const el = document.getElementById("commit-hint");
   if (el && c) el.textContent = c.desc;
-}
-
-function updateArtifactHint() {
-  const id = val("f-nextStepType");
-  const el = document.getElementById("artifact-hint");
-  if (el) el.textContent = "Артефакт: " + nextStepArtifact(id);
 }
 
 function applyModelScores(silent) {
@@ -709,8 +683,6 @@ function emptyDeal() {
     scoreReasons: {},
     scoreHistory: [],
     scoresOverridden: {},
-    nextStepType: "discovery",
-    nextStepComment: "",
     riskType: "none",
     riskComment: "",
     commitStatus: "none",
@@ -757,7 +729,6 @@ function saveDealModal() {
 async function saveDealModalAsync() {
   const prev = editingDealIdx != null ? state.deals[editingDealIdx] : null;
   const scoreData = collectScoresFromForm(prev);
-  const nextStepType = val("f-nextStepType");
   const riskType = val("f-riskType");
 
   const deal = {
@@ -780,8 +751,6 @@ async function saveDealModalAsync() {
     budgetPlannedYear: val("f-budgetStatus") === "Планируется согласование" ? (+val("f-budgetPlannedYear") || null) : null,
     commitStatus: val("f-commitStatus"),
     pains: val("f-pains"),
-    nextStepType,
-    nextStepComment: val("f-nextStepComment"),
     riskType,
     riskComment: val("f-riskComment"),
     techResearch: collectTechResearch(),
@@ -799,10 +768,6 @@ async function saveDealModalAsync() {
   }
   if (!deal.customer) {
     alert("Укажите клиента");
-    return;
-  }
-  if (nextStepType === "other" && !deal.nextStepComment.trim()) {
-    alert("Для типа «Другое» нужен комментарий к следующему шагу");
     return;
   }
   if (riskType === "other" && !deal.riskComment.trim()) {

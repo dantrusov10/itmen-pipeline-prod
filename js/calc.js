@@ -351,8 +351,6 @@ function enrichDeal(deal) {
     ...d, score, computedProb, prob, category, daysSince, daysTo, quality, riskFlag, weighted,
     expectedAmount,
     commitLabel: commitLabel(d.commitStatus),
-    nextStepText: nextStepLabel(d.nextStepType),
-    artifact: nextStepArtifact(d.nextStepType),
     projectCompliancePct: d.techResearch?.productRequirementsPct,
     pilotCompliancePct: d.techResearch?.pilotRequirementsPct,
   };
@@ -369,8 +367,6 @@ function clearDealExtendedFields(deal) {
   d.budgetPlannedYear = null;
   d.commitStatus = "none";
   d.pains = "";
-  d.nextStepType = "discovery";
-  d.nextStepComment = "";
   d.riskType = "none";
   d.riskComment = "";
   d.techResearch = typeof defaultTechResearch === "function" ? defaultTechResearch() : {
