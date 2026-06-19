@@ -4,6 +4,7 @@ data/pipeline.json
 data/audit.log.jsonl
 .env
 cookies.txt
+amocrm_preview.json
 .DS_Store
 *.log
 Thumbs.db
