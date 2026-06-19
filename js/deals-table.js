@@ -2,14 +2,21 @@
 const DEALS_TABLE_COLS = [
   {
     key: "customer",
-    label: "Клиент / стадия",
+    label: "Клиент",
     filter: "text",
-    get: d => `${d.customer} ${d.stage}`,
+    get: d => d.customer,
     render(d) {
-      return `<td class="col-customer">
-        <strong>${escapeHtml(d.customer)}</strong>
-        <div class="cell-sub">${escapeHtml(d.stage)}</div>
-      </td>`;
+      return `<td class="col-customer"><strong>${escapeHtml(d.customer)}</strong></td>`;
+    },
+  },
+  {
+    key: "stage",
+    label: "Стадия",
+    filter: "multiselect",
+    filterOptions: deals => resolveStageFilterOptions(deals),
+    get: d => d.stage || "—",
+    render(d) {
+      return `<td class="col-stage"><small>${escapeHtml(d.stage || "—")}</small></td>`;
     },
   },
   {
@@ -130,8 +137,29 @@ function matchRangeFilter(col, d) {
   return true;
 }
 
+function getMultiselectFilter(colKey) {
+  const f = dealsTableColFilters[colKey];
+  if (!f) return [];
+  if (Array.isArray(f)) return f;
+  return f ? [String(f)] : [];
+}
+
+function resolveStageFilterOptions(deals) {
+  const base = state?.lists?.stages || window.ITMEN_INITIAL?.lists?.stages || [];
+  const all = [...base];
+  [...new Set((deals || []).map(d => d.stage).filter(Boolean))].forEach(s => {
+    if (!all.includes(s)) all.push(s);
+  });
+  return all;
+}
+
 function matchColFilter(col, d) {
   if (col.filter === "range") return matchRangeFilter(col, d);
+  if (col.filter === "multiselect") {
+    const selected = getMultiselectFilter(col.key);
+    if (!selected.length) return true;
+    return selected.includes(dealCellText(col, d));
+  }
   const f = (dealsTableColFilters[col.key] || "").trim();
   if (!f) return true;
   if (col.filter === "select" || col.filter === "select-dynamic") {
@@ -149,6 +177,12 @@ function applyDealsTableFilters(deals) {
       }
       continue;
     }
+    if (col.filter === "multiselect") {
+      if (getMultiselectFilter(col.key).length) {
+        rows = rows.filter(d => matchColFilter(col, d));
+      }
+      continue;
+    }
     const f = dealsTableColFilters[col.key];
     if (f) rows = rows.filter(d => matchColFilter(col, d));
   }
@@ -162,7 +196,7 @@ function applyDealsTableFilters(deals) {
 }
 
 function sortDealsTableRows(deals) {
-  const col = DEALS_TABLE_COLS.find(c => c.key === dealsTableSort.key) || DEALS_TABLE_COLS[2];
+  const col = DEALS_TABLE_COLS.find(c => c.key === dealsTableSort.key) || DEALS_TABLE_COLS.find(c => c.key === "amount");
   const dir = dealsTableSort.dir === "asc" ? 1 : -1;
   return [...deals].sort((a, b) => {
     const av = colSortValue(col, a);
@@ -184,7 +218,31 @@ function resolveFilterOptions(col, deals) {
   return col.filterOptions || [];
 }
 
+function renderMultiselectFilter(col, deals) {
+  const options = typeof col.filterOptions === "function"
+    ? col.filterOptions(deals)
+    : resolveFilterOptions(col, deals);
+  const selected = new Set(getMultiselectFilter(col.key));
+  const label = selected.size === 0 ? "Все" : `${selected.size} выбр.`;
+  const checkboxes = options.map(o =>
+    `<label class="deals-ms-opt">
+      <input type="checkbox" class="deals-ms-cb" data-col="${col.key}" value="${escapeHtml(o)}"${selected.has(o) ? " checked" : ""}>
+      <span>${escapeHtml(o)}</span>
+    </label>`
+  ).join("");
+  return `<div class="deals-ms-filter" data-col="${col.key}">
+    <button type="button" class="deals-ms-toggle" data-col="${col.key}">${escapeHtml(label)} ▾</button>
+    <div class="deals-ms-panel">
+      <div class="deals-ms-actions">
+        <button type="button" class="deals-ms-clear" data-col="${col.key}">Сбросить</button>
+      </div>
+      <div class="deals-ms-list">${checkboxes}</div>
+    </div>
+  </div>`;
+}
+
 function renderColFilter(col, deals) {
+  if (col.filter === "multiselect") return renderMultiselectFilter(col, deals);
   if (col.filter === "range") {
     const from = escapeHtml(dealsTableColFilters[col.key + "__from"] || "");
     const to = escapeHtml(dealsTableColFilters[col.key + "__to"] || "");
@@ -257,12 +315,40 @@ function setColFilterFromInput(el) {
   else dealsTableColFilters[col] = el.value;
 }
 
+function updateMultiselectToggleLabel(colKey) {
+  const wrap = document.querySelector(`.deals-ms-filter[data-col="${colKey}"]`);
+  if (!wrap) return;
+  const checked = wrap.querySelectorAll(".deals-ms-cb:checked");
+  const btn = wrap.querySelector(".deals-ms-toggle");
+  if (!btn) return;
+  btn.textContent = (checked.length ? `${checked.length} выбр.` : "Все") + " ▾";
+}
+
+function syncMultiselectFilter(colKey) {
+  const wrap = document.querySelector(`.deals-ms-filter[data-col="${colKey}"]`);
+  if (!wrap) return;
+  const checked = [...wrap.querySelectorAll(".deals-ms-cb:checked")].map(cb => cb.value);
+  if (checked.length) dealsTableColFilters[colKey] = checked;
+  else delete dealsTableColFilters[colKey];
+  updateMultiselectToggleLabel(colKey);
+}
+
+function closeAllMultiselectPanels(except) {
+  document.querySelectorAll(".deals-ms-filter.open").forEach(el => {
+    if (except && el === except) return;
+    el.classList.remove("open");
+  });
+}
+
 function clearAllDealsFilters() {
   dealsTableColFilters = {};
   dealsTableSearch = "";
   const gs = document.getElementById("deals-global-search");
   if (gs) gs.value = "";
   document.querySelectorAll(".deals-col-filter").forEach(el => { el.value = ""; });
+  document.querySelectorAll(".deals-ms-cb").forEach(el => { el.checked = false; });
+  document.querySelectorAll(".deals-ms-toggle").forEach(el => { el.textContent = "Все ▾"; });
+  closeAllMultiselectPanels();
 }
 
 function bindDealsTableEvents() {
@@ -293,7 +379,37 @@ function bindDealsTableEvents() {
       updateDealsTableBody(getEnrichedDeals());
     }
   });
+  page?.addEventListener("click", e => {
+    const msToggle = e.target.closest(".deals-ms-toggle");
+    if (msToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = msToggle.closest(".deals-ms-filter");
+      const open = wrap?.classList.contains("open");
+      closeAllMultiselectPanels();
+      if (wrap && !open) wrap.classList.add("open");
+      return;
+    }
+    const msClear = e.target.closest(".deals-ms-clear");
+    if (msClear) {
+      e.preventDefault();
+      e.stopPropagation();
+      const colKey = msClear.dataset.col;
+      const wrap = msClear.closest(".deals-ms-filter");
+      wrap?.querySelectorAll(".deals-ms-cb").forEach(cb => { cb.checked = false; });
+      delete dealsTableColFilters[colKey];
+      updateMultiselectToggleLabel(colKey);
+      updateDealsTableBody(getEnrichedDeals());
+      return;
+    }
+    if (!e.target.closest(".deals-ms-filter")) closeAllMultiselectPanels();
+  });
   page?.addEventListener("change", e => {
+    if (e.target.classList.contains("deals-ms-cb")) {
+      syncMultiselectFilter(e.target.dataset.col);
+      updateDealsTableBody(getEnrichedDeals());
+      return;
+    }
     if (e.target.classList.contains("deals-col-filter") && e.target.tagName === "SELECT") {
       setColFilterFromInput(e.target);
       updateDealsTableBody(getEnrichedDeals());
