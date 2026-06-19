@@ -1,0 +1,1292 @@
+{
+  "zones": [
+    "BI / Governance",
+    "CMDB · Golden Record (SoT)",
+    "Cloud / Hybrid",
+    "ITAM · SAM · FinOps",
+    "ITSM · Service Desk · BPM · Knowledge Base",
+    "SIEM · EDR · Уязвимости · GRC / compliance",
+    "Дискаверинг и инвентаризация (L1)",
+    "Инфраструктура сети: NMS · IPAM · NAC",
+    "Источники первичных данных",
+    "Мониторинг · APM · Поставка изменений"
+  ],
+  "classes_overview": [
+    "APM / Observability",
+    "BI / DWH",
+    "BPM / Workflow",
+    "CMDB / Asset Data Hub Golden Record",
+    "CMP",
+    "Cloud Governance",
+    "Deploy / Patch / CM",
+    "Discovery & Inventory (нормализация как подпоток данных)",
+    "EDR",
+    "ERP / Procurement",
+    "Endpoints / Servers",
+    "Executive Dashboards",
+    "FinOps",
+    "GRC / Compliance (PAM · DLP · политики)",
+    "HRM / HRIS",
+    "IAM / IGA / PAM",
+    "IPAM / DNS / DHCP",
+    "ITAM",
+    "ITSM",
+    "Knowledge Base",
+    "Monitoring / Event",
+    "NAC",
+    "Network Mgmt / NMS",
+    "SAM",
+    "SIEM",
+    "Service Desk",
+    "Vulnerability Mgmt"
+  ],
+  "class_directory": [
+    [
+      "n-ops-2",
+      "APM / Observability",
+      "APM?Observability",
+      "Мониторинг приложений и observability (Datadog, Dynatrace, New Relic, Grafana).",
+      "Понимание поведения приложений: метрики, логи, трейсы (MELT).",
+      "Снижение MTTR, проактивное выявление узких мест, управление пользовательским опытом.",
+      "Агенты/instrumentation собирают traces и metrics; корреляция запросов через сервисы; алерты на деградацию SLO."
+    ],
+    [
+      "n-itsm-3",
+      "BPM / Workflow",
+      "BPM?Workflow",
+      "Бизнес-процессы и workflow-движок.",
+      "Автоматизация маршрутов согласования и исполнения задач.",
+      "Ускорение согласований, исключение «бумажных» процессов, compliance.",
+      "Визуальный конструктор процессов (BPMN); назначение задач, таймеры, условные переходы, интеграция с API."
+    ],
+    [
+      "n-c2",
+      "Cloud Governance",
+      "Cloud Governance",
+      "Политики и управление облаком (AWS Organizations, Azure Policy, GCP Organization Policy, FinOps-рамки).",
+      "Навязание корпоративных правил в облачных средах.",
+      "Предотвращение нежелательных конфигураций, контроль тегов, ограничение регионов/типов ресурсов.",
+      "Policy-as-code (OPA, Azure Policy); guardrails на создание ресурсов; auto-remediation; charge-back по тегам."
+    ],
+    [
+      "n-ops-3",
+      "Deploy / Patch / CM",
+      "CMDB / Asset Data Hub",
+      "Центральный реестр конфигураций (CI) и связей: золотая запись актива приложения сервиса и зависимостей между ними.",
+      "Единая модель данных для инцидентов изменений закупок и отчётности без дублирования в смежных системах.",
+      "Прозрачность владения затратами и рисками согласованные решения по изменениям и инвестициям.",
+      "REST/GraphQL и событийные шины синхронизация с Discovery нормализацией ITSM и DWH; правила качества данных и reconciliation."
+    ],
+    [
+      "n-hub",
+      "CMDB / Asset Data Hub Golden Record",
+      "CMDB / Golden Record",
+      "Центральный реестр конфигураций (CI) и связей: золотая запись актива приложения сервиса и зависимостей между ними.",
+      "Единая модель данных для инцидентов изменений закупок и отчётности без дублирования в смежных системах.",
+      "Прозрачность владения затратами и рисками согласованные решения по изменениям и инвестициям.",
+      "REST/GraphQL и событийные шины синхронизация с Discovery нормализацией ITSM и DWH; правила качества данных и reconciliation."
+    ],
+    [
+      "n-c1",
+      "CMP",
+      "CMP",
+      "Cloud Management Platform (Morpheus, CloudBolt, Flexera, встроенные оркестраторы).",
+      "Единый интерфейс для заказа, развёртывания и управления ресурсами в мультиоблаке.",
+      "Self-service для DevOps, сокращение shadow IT, стандартизация шаблонов.",
+      "Каталог шаблонов (blueprints) ? provisioning в AWS/Azure/GCP/vSphere ? lifecycle management ? decommissioning."
+    ],
+    [
+      "n-disc-1",
+      "Discovery & Inventory (нормализация как подпоток данных)",
+      "Discovery / Inventory",
+      "Дискаверинг и единая инвентаризация: сбор сигналов on-prem, облака (multi-cloud inventory), UEM/MDM, агенты и API. Подпоток данных нормализации, reconciliation, распознавания ПО и обогащения владельцами рассматривается как часть этого контура (подача качественных CI в SoT), без отдельной зоны «нормализации» на схеме.",
+      "Автоматически обнаруживать и собирать данные обо всех ИТ-активах и готовить их к загрузке в CMDB.",
+      "Прозрачность инфраструктуры, снижение потерь оборудования, обоснование инвестиций.",
+      "Агенты, SNMP, API облаков, инвентаризация конечных точек; правила нормализации и dedup; передача в CMDB."
+    ],
+    [
+      "n-sec-2",
+      "EDR",
+      "EDR",
+      "Endpoint Detection and Response (CrowdStrike, SentinelOne, Kaspersky EDR).",
+      "Обнаружение и реагирование на угрозы на конечных устройствах.",
+      "Остановка вредоносного ПО, расследование компрометации рабочих станций.",
+      "Агент мониторит процессы, сетевые соединения, поведение; ML-детекция аномалий; remote containment (isolate host)."
+    ],
+    [
+      "n-src1",
+      "Endpoints / Servers",
+      "Endpoints?Servers",
+      "Рабочие станции, ноутбуки, физические и виртуальные серверы, VDI.",
+      "Обеспечить вычислительную инфраструктуру для пользователей и приложений.",
+      "Работа сотрудников и хостинг бизнес-приложений.",
+      "ОС + агенты/SNMP/WMI отдают данные об аппаратной конфигурации, статусе, сетевом адресе."
+    ],
+    [
+      "n-src3",
+      "ERP / Procurement",
+      "ERP?Procurement",
+      "ERP-системы и модули закупок (SAP, 1С:ERP, Oracle).",
+      "Автоматизировать бухгалтерию, закупки, склад, производство.",
+      "Контроль затрат, прозрачность цепочки поставок, списание активов по бухгалтерии.",
+      "Транзакционная БД с модулями MM/FI/CO; интегрируется с финансами и складом через IDoc/RFC/REST."
+    ],
+    [
+      "n-b2",
+      "Executive Dashboards",
+      "Executive Dashboards",
+      "Дашборды для руководства.",
+      "Высокоуровневая визуализация ключевых метрик ИТ.",
+      "Быстрая оценка здоровья ИТ, обоснование инвестиций на совете директоров.",
+      "KPI/SLA метрики (доступность, затраты, удовлетворённость, риски) в real-time; drill-down от high-level к деталям."
+    ],
+    [
+      "n-fin-3",
+      "FinOps",
+      "FinOps",
+      "Финансовые операции и управление облачными затратами.",
+      "Оптимизация расходов на облако через прозрачность и accountability.",
+      "Снижение облачного счёта на 20–30 %, charge-back/show-back по командам.",
+      "Тегирование ресурсов, бюджеты, алерты на аномалии, рекомендации (rightsizing, reserved instances)."
+    ],
+    [
+      "n-src2",
+      "HRM / HRIS",
+      "HRM?HRIS",
+      "Кадровые системы (1С:ЗУП, SAP HCM, Workday, Босс-кадровик).",
+      "Хранить оргструктуру, штатное расписание, кадровые события.",
+      "Управление персоналом, расчёт зарплаты, привязка активов к сотрудникам.",
+      "Ведёт справочники сотрудников, подразделений, должностей; через API/DB-sync отдаёт изменения."
+    ],
+    [
+      "n-src4",
+      "IAM / IGA / PAM",
+      "IAM?IGA?PAM",
+      "Управление идентификацией, доступом и привилегированными учётными записями (Active Directory, SailPoint, CyberArk).",
+      "Централизованно выдавать, отзывать и аудировать доступы.",
+      "Снижение рисков утечек, compliance (SOX, 152-ФЗ), сокращение shadow IT.",
+      "Identity Store + политики RBAC/ABAC; workflow на выдачу прав; PAM-сессии записывают действия привилегированных пользователей."
+    ],
+    [
+      "n-infra-2",
+      "IPAM / DNS / DHCP",
+      "IPAM?DNS?DHCP",
+      "Управление IP-адресами, доменными именами и автоматической выдачей адресов (BlueCat, Infoblox, Microsoft IPAM).",
+      "Автоматизация адресного пространства и разрешения имён.",
+      "Исключение конфликтов IP, ускорение onboarding, централизация DNS.",
+      "IPAM — реестр свободных/занятых подсетей; DNS — резолвит имена; DHCP — выдаёт адреса по lease."
+    ],
+    [
+      "n-fin-1",
+      "ITAM",
+      "ITAM",
+      "IT Asset Management: жизненный цикл IT-активов (закупка, ввод, эксплуатация, списание), кастодиан и финансовые атрибуты.",
+      "Единый учёт активов для планирования, аудита и согласованности с CMDB и финансами.",
+      "Прозрачность затрат и рисков по активам; поддержка compliance и отчётности.",
+      "Интеграции с CMDB, procurement, SAM, ERP; workflow смены статусов и владельцев."
+    ],
+    [
+      "n-itsm-1",
+      "ITSM",
+      "ITSM Core",
+      "Ядро системы управления ИТ-услугами (ServiceNow, Jira Service Management, BMC Remedy, GLPI).",
+      "Платформа для автоматизации ИТ-процессов по ITIL.",
+      "Снижение времени простоя, прозрачность ИТ-затрат, измеримость SLA.",
+      "Тикетная система + CMDB + workflow engine; маршрутизирует обращения, считает метрики, управляет SLA."
+    ],
+    [
+      "n-itsm-4",
+      "Knowledge Base",
+      "Knowledge Base",
+      "База знаний.",
+      "Хранение решений, инструкций, RCA, FAQ.",
+      "Сокращение time-to-resolve, onboarding новых инженеров, снижение нагрузки на L1.",
+      "Статьи с тегами, связь с инцидентами, поиск по полнотексту, feedback (было ли полезно)."
+    ],
+    [
+      "n-ops-1",
+      "Monitoring / Event",
+      "Monitoring / Event",
+      "Сбор метрик, событий и логов с инфраструктуры и приложений; алертинг, корреляция и передача сигналов в ITSM.",
+      "Раннее обнаружение отказов и деградаций; автоматизация создания инцидентов.",
+      "Минимизация MTTR и влияния сбоев на бизнес.",
+      "Агенты, SNMP, API облаков и APM; правила алертов, webhooks в Service Desk/Incident Management, хранение временных рядов."
+    ],
+    [
+      "n-infra-3",
+      "NAC",
+      "NAC",
+      "Network Access Control (Cisco ISE, ForeScout, Aruba ClearPass).",
+      "Контроль подключения устройств к сети на основе идентичности и posture.",
+      "Предотвращение подключения неавторизованных/заражённых устройств, сегментация.",
+      "Проверяет 802.1X/MAC/профиль устройства при подключении; не прошёл проверку — отправляет в изоляцию (quarantine VLAN)."
+    ],
+    [
+      "n-infra-1",
+      "Network Mgmt / NMS",
+      "Network Management?NMS",
+      "Системы управления сетью (Zabbix, SolarWinds, LibreNMS, PRTG).",
+      "Мониторинг состояния сетевого оборудования и трафика.",
+      "Снижение downtime сети, планирование ёмкости (capacity planning).",
+      "Опрос коммутаторов/маршрутизаторов по SNMP/SSH/NetFlow; строит топологию, алерит на ошибки интерфейсов."
+    ],
+    [
+      "n-sec-4",
+      "GRC / Compliance (PAM · DLP · политики)",
+      "PAM",
+      "Privileged Access Management (CyberArk, Delinea, Wallix).",
+      "Защита и контроль привилегированных учётных записей (админов, root, service accounts).",
+      "Предотвращение инсайдерских угроз и lateral movement, аудит действий админов.",
+      "Vault для паролей; session recording; just-in-time elevation; ротация credentials."
+    ],
+    [
+      "n-fin-2",
+      "SAM",
+      "SAM",
+      "Software Asset Management: инвентаризация ПО, нормализация названий, сопоставление с лицензиями и контрактами.",
+      "Снижение license gap и подготовка к аудитам ПО.",
+      "Контроль стоимости и правового соответствия по ПО.",
+      "Данные с агентов и реестров, связь с License Management и CMDB; отчёты ELP и рекомендации по оптимизации."
+    ],
+    [
+      "n-itsm-2",
+      "Service Desk",
+      "Service Desk",
+      "Единая точка контакта пользователей с ИТ: приём и первичная обработка обращений (инциденты, запросы на обслуживание, вопросы), мультиканальность и маршрутизация на L1/L2.",
+      "Стандартизировать регистрацию обращений, связать тикеты с CMDB и каталогом услуг, обеспечить SLA и эскалации.",
+      "Снижение времени восстановления сервиса и повышение удовлетворённости пользователей.",
+      "Интеграции с ITSM Core, CMDB, Knowledge Base, телефонией и почтой; правила маршрутизации и очереди исполнителей."
+    ],
+    [
+      "n-sec-1",
+      "SIEM",
+      "SIEM",
+      "Security Information and Event Management (Splunk ES, QRadar, Sentinel, ELK).",
+      "Централизованный сбор, корреляция и анализ security-событий.",
+      "Раннее обнаружение атак, расследование инцидентов ИБ, compliance (PCI DSS, 187-ФЗ).",
+      "Агенты/ syslog/ API ? нормализация ? корреляционные правила (correlation rules) ? алерты ? расследование."
+    ],
+    [
+      "n-sec-3",
+      "Vulnerability Mgmt",
+      "Vulnerability Management",
+      "Управление уязвимостями: обнаружение (сканирование, агенты), приоритизация, план ремедиации и контроль закрытия.",
+      "Сокращение окна эксплуатации уязвимостей и поверхности атаки.",
+      "Снижение риска инцидентов и требований регуляторов.",
+      "Интеграция со сканерами, CMDB, patch- и ITSM-процессами; SLA на устранение и отчётность для CISO."
+    ]
+  ],
+  "class_directory_total": 26,
+  "vendors_by_class_sample": {
+    "CMDB / Asset Data Hub Golden Record": [
+      {
+        "vendor": "10-Strike",
+        "product": "Network Inventory Explorer",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Информатика (Informatika)",
+        "product": "Информатика IT Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ИнфраМенеджер (SoftIntegro)",
+        "product": "InfraManager ITSM",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Пульт (Лаборатория Числитель)",
+        "product": "Пульт IT Monitoring and Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Astra Linux",
+        "product": "Astra Configuration Manager (ACM)",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Atlassian",
+        "product": "Jira Service Management Assets (CMDB) + Data Manager",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "BMC",
+        "product": "Helix CMDB",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Broadcom",
+        "product": "CA Service Management (CA CMDB + APM)",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "Endpoints / Servers": [
+      {
+        "vendor": "Ansible (Red Hat)",
+        "product": "Ansible Automation",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Chef (Progress)",
+        "product": "Chef Infra",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "CrowdStrike",
+        "product": "Falcon",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Elastic",
+        "product": "Agent (Fleet)",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Kaspersky",
+        "product": "Endpoint Security Cloud",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Microsoft",
+        "product": "Intune",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Positive Technologies",
+        "product": "VM",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Puppet",
+        "product": "Enterprise",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "HRM / HRIS": [
+      {
+        "vendor": "1С",
+        "product": "Зарплата и управление персоналом",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Cornerstone OnDemand",
+        "product": "Cornerstone HR",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Infor",
+        "product": "CloudSuite HCM",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Oracle",
+        "product": "HCM Cloud",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "SAP",
+        "product": "SuccessFactors",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Workday",
+        "product": "HCM",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Zenefits (TriNet)",
+        "product": "TriNet HR",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "ERP / Procurement": [
+      {
+        "vendor": "1С",
+        "product": "Предприятие 8",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "1С",
+        "product": "ERP",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Microsoft",
+        "product": "Dynamics 365 Finance",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Oracle",
+        "product": "Fusion Cloud ERP",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "SAP",
+        "product": "S/4HANA",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Terrasoft (Creatio)",
+        "product": "BPMSoft Terrasoft CRM",
+        "country": "РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "IAM / IGA / PAM": [
+      {
+        "vendor": "BeyondTrust",
+        "product": "Privileged Access Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Cayosoft",
+        "product": "Administrator",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "CyberArk",
+        "product": "Privileged Access Manager",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Delinea",
+        "product": "PAM (formerly Thycotic)",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ForgeRock",
+        "product": "PingOne Advanced (ex-ForgeRock Identity Platform)",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "HashiCorp",
+        "product": "Vault",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "JumpCloud",
+        "product": "Directory",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Microsoft",
+        "product": "Entra ID",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "Discovery & Inventory (нормализация как подпоток данных)": [
+      {
+        "vendor": "10-Strike",
+        "product": "Network Inventory Explorer",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Информатика (Informatika)",
+        "product": "Информатика IT Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ИнфраМенеджер (SoftIntegro)",
+        "product": "ИнфраМенеджер (SoftIntegro)",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ОдинХаб",
+        "product": "IT Asset Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Aiteco",
+        "product": "IT Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Apache",
+        "product": "CloudStack",
+        "country": "Мультирегион",
+        "openSource": "Да"
+      },
+      {
+        "vendor": "Astra Linux",
+        "product": "Astra Configuration Manager (ACM)",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Atlassian",
+        "product": "Jira Service Management (Assets)",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "Network Mgmt / NMS": [
+      {
+        "vendor": "10-Strike",
+        "product": "Network Monitor",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Пульт (Лаборатория Числитель)",
+        "product": "IT Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Algosec",
+        "product": "Security Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Auvik",
+        "product": "Network Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Broadcom",
+        "product": "CA Network Monitoring",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Centreon",
+        "product": "Centreon",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "Datadog",
+        "product": "Network Monitoring",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "F5",
+        "product": "Distributed Cloud Network Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "IPAM / DNS / DHCP": [
+      {
+        "vendor": "BeyondTrust",
+        "product": "Privileged Access Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "BlueCat",
+        "product": "Integrity",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "CyberArk",
+        "product": "Privileged Access Manager",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Delinea",
+        "product": "PAM (formerly Thycotic)",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "EfficientIP",
+        "product": "SOLIDserver DDI",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Infoblox",
+        "product": "NIOS DDI",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Men&Mice",
+        "product": "Micetro",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "NetBox",
+        "product": "NetBox",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      }
+    ],
+    "NAC": [
+      {
+        "vendor": "Aruba (HPE)",
+        "product": "Aruba ClearPass",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Cisco",
+        "product": "Identity Services Engine (ISE)",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Cloudflare",
+        "product": "Zero Trust",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Extreme Networks",
+        "product": "ExtremeControl",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Forescout",
+        "product": "Platform",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Perimeter 81",
+        "product": "Perimeter 81",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Portnox",
+        "product": "Cloud",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Twingate",
+        "product": "Twingate",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "CMP": [
+      {
+        "vendor": "Broadcom",
+        "product": "VMware Aria",
+        "country": "Не РФ",
+        "openSource": "Да"
+      },
+      {
+        "vendor": "CloudBolt",
+        "product": "CloudBolt",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Flexera",
+        "product": "One",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Mist.io",
+        "product": "Mist.io",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "Morpheus Data",
+        "product": "Morpheus",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ServiceNow",
+        "product": "Cloud Management",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "Cloud Governance": [
+      {
+        "vendor": "AWS",
+        "product": "Organizations + SCP",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Flexera",
+        "product": "One Cloud Governance",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "IBM",
+        "product": "Apptio Cloudability (IT Financial Management)",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Kubecost",
+        "product": "Kubecost",
+        "country": "Мультирегион",
+        "openSource": "Да"
+      },
+      {
+        "vendor": "Microsoft",
+        "product": "Azure Policy + Blueprints",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ServiceNow",
+        "product": "GRC",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Snow",
+        "product": "Atlas",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "ITSM": [
+      {
+        "vendor": "ИнфраМенеджер (SoftIntegro)",
+        "product": "ITSM",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ОдинХаб",
+        "product": "ОдинХаб",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Atera",
+        "product": "Platform",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Atlassian",
+        "product": "Jira Service Management",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "BMC",
+        "product": "Helix ITSM Asset Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Freshworks",
+        "product": "Freshservice",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "GLPI",
+        "product": "GLPI",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "HaloITSM",
+        "product": "HaloITSM",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      }
+    ],
+    "Service Desk": [
+      {
+        "vendor": "Atlassian",
+        "product": "Jira Service Management",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Freshworks",
+        "product": "Freshservice",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "GLPI",
+        "product": "Service Desk",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "HaloITSM",
+        "product": "Service Desk",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Inferit",
+        "product": "Service Desk",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Ivanti",
+        "product": "Neurons for ITSM",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ManageEngine (Zoho)",
+        "product": "ServiceDesk Plus",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Naumen",
+        "product": "Service Desk",
+        "country": "РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "BPM / Workflow": [
+      {
+        "vendor": "Astra Linux",
+        "product": "Astra Configuration Manager (ACM)",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Atlassian",
+        "product": "Jira Service Management Automation",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Cherwell Software (Ivanti)",
+        "product": "Core",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Colibri-ARM (ICL Services)",
+        "product": "Colibri-ARM (ICL Services)",
+        "country": "РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Freshworks",
+        "product": "Freshservice Workflow Automator",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "HaloITSM",
+        "product": "Workflow",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Ivanti",
+        "product": "Automation",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Kaspersky",
+        "product": "Systems Management",
+        "country": "РФ",
+        "openSource": "Нет"
+      }
+    ],
+    "Knowledge Base": [
+      {
+        "vendor": "Atlassian",
+        "product": "Confluence Knowledge Base",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "BMC",
+        "product": "Helix Knowledge Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "Freshworks",
+        "product": "Freshservice Knowledge Base",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "GLPI",
+        "product": "Knowledge Base",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "HaloITSM",
+        "product": "Knowledge Base",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "iTop (Combodo)",
+        "product": "Knowledge Base",
+        "country": "Мультирегион",
+        "openSource": "Смешанно"
+      },
+      {
+        "vendor": "Ivanti",
+        "product": "Knowledge Management",
+        "country": "Мультирегион",
+        "openSource": "Нет"
+      },
+      {
+        "vendor": "ManageEngine (Zoho)",
+        "product": "ServiceDesk Plus Knowledge Base",
+        "country": "Не РФ",
+        "openSource": "Нет"
+      }
+    ]
+  },
+  "itsm_headers": [
+    "Категория/функция",
+    "Приоритет (1/2/3)",
+    "Название категории/функции",
+    "Общее описание категории/функции",
+    "Техническое описание категории/функции",
+    "Бизнес описание категории/функции",
+    "10-Strike — Network Inventory Explorer",
+    "10-Strike — Network Monitor",
+    "1С — Зарплата и управление персоналом",
+    "1С — Предприятие 8",
+    "1С — ERP",
+    "АБП2Б — ОдинХаб",
+    "АБП2Б — ОдинХаб (OdnHub)",
+    "Информатика (Informatika) — Информатика IT Management",
+    "ИнфраМенеджер (SoftIntegro) — ИнфраМенеджер (SoftIntegro)",
+    "ИнфраМенеджер (SoftIntegro) — ИнфраМенеджер ERP Sync (1С, SAP)",
+    "ИнфраМенеджер (SoftIntegro) — ИнфраМенеджер SAM",
+    "ИнфраМенеджер (SoftIntegro) — InfraManager ITSM",
+    "ИнфраМенеджер (SoftIntegro) — ITSM"
+  ],
+  "itsm_sample": [
+    [
+      "категория",
+      "3",
+      "Процессная оркестрация",
+      "Центральная функция ITSM Core — координация и управление полным жизненным циклом сервисных процессов, от регистрации обращения до контролируемого закрытия. Ядро платформы обеспечивает сквозную видимость всех сервисных событий, связывая инциденты, изменения, проблемы и релизы в единый управленческий контекст. Без процессной оркестрации сервисные дисциплины работают изолированно, дублируют усилия и теряют операционную эффективность.",
+      "Реализуется через встроенные доменные модели ITIL-процессов, движок workflow с настраиваемыми статусными моделями, механизмы автоматической маршрутизации на основе атрибутов CI, матрицы эскалации и интеграционные адаптеры для CMDB, APM, мониторинга и Service Desk. Платформа поддерживает REST/GraphQL API, событийные шины для триггеров от мониторинга, двунаправленную синхронизацию с CMDB и расчёт SLA в реальном времени с учётом календарей работы и периодов обслуживания.",
+      "Обеспечивает непрерывность IT-услуг и предсказуемость операций: каждое сервисное событие обрабатывается по стандартизированной процедуре с контролируемыми сроками и назначенной ответственностью. ROI проявляется через сокращение MTTR на 30–40% за счёт автоматической маршрутизации и контекста из CMDB, снижение частоты неавторизованных изменений и повышение процента инцидентов, разрешённых в рамках SLA. Для организации с 500+ ИТ-сотрудниками внедрение оркестрации снижает операционные риски и обеспечивает соответствие требованиям регуляторов.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "3",
+      "Маршрутизация и эскалация",
+      "Механизм автоматической маршрутизации сервисных событий на ответственные группы и исполнителей на основе атрибутов CI, категории, приоритета, оргструктуры и загрузки команд. Эскалация обеспечивает повышение уровня внимания при приближении к SLA-порогам или при невозможности разрешения на текущем уровне. Без эффективной маршрутизации инциденты задерживаются на неправильных очередях, нарушаются SLA и падает удовлетворённость пользователей.",
+      "Маршрутизация реализована через настраиваемые правила с условной логикой: категория + приоритет + CI-атрибут (критичность, владелец, местоположение) + оргструктура ? назначение группы/исполнителя. Поддерживается round-robin, учёт загрузки исполнителей, автоматическое переназначение при отсутствии реакции. Эскалация бывает функциональной (передача на более квалифицированную группу) и иерархической (уведомление руководителя), запускается по таймаутам SLA с поддержкой рабочих часов и исключений. Интеграция с HRM обеспечивает корректную маршрутизацию при событиях JML.",
+      "Сокращает время первого отклика (TTR) на 30–50% за счёт исключения ручного перенаправления между командами. Правильная маршрутизация гарантирует, что инцидент на критичном сервере сразу попадает к команде, ответственной за данный сервис, а не в общую очередь первой линии. Эскалация по таймаутам предотвращает 'зависание' инцидентов и обеспечивает своевременное привлечение внимания руководства. Для организаций с 10000+ сотрудников эффективная маршрутизация — критический фактор соблюдения SLA.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "2",
+      "BPM/Workflow движок",
+      "Встроенный движок бизнес-процессов для автоматизации сервисных workflow: маршрутов согласования, процедур утверждения, последовательностей действий при инцидентах. BPM/Workflow позволяет адаптировать стандартные ITIL-процессы под специфику организации без изменения кода платформы. Движок поддерживает визуальное проектирование процессов, условную логику, параллельные и последовательные задачи, таймеры и интеграционные вызовы.",
+      "Движок реализован по стандарту BPMN 2.0 с визуальным дизайнером процессов. Поддерживает: условные переходы на основе атрибутов CI и категорий, параллельное согласование (например, одновременное утверждение CAB и владельцем сервиса), таймеры для эскалации, интеграционные активити для вызова внешних API (CMDB, HRM, ERP), скриптовые задачи для кастомной логики. Механизм версионирования позволяет обновлять процессы без остановки работы. Производительность: выполнение workflow без задержек при 500+ параллельных экземплярах.",
+      "Сокращает время согласования стандартных изменений с дней до часов за счёт автоматизации маршрутов утверждения. Визуальное проектирование процессов позволяет адаптировать ITIL-практики под специфику организации без дорогостоящей кастомизации кода. Стандартизация workflow снижает влияние человеческого фактора: каждый процесс выполняется по утверждённой процедуре с полным аудиторским следом. Для организаций со сложной матричной структурой BPM-движок обеспечивает согласованность процессов между подразделениями.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "2",
+      "Управление каталогом услуг (Service Catalog)",
+      "Функция публикации доступных ИТ-услуг с описанием, условиями предоставления, SLA и процедурой заказа. Service Catalog служит витриной ИТ-услуг для бизнес-пользователей и формализует перечень того, что ИТ-департамент предоставляет организации. Каждая услуга связана с процессами fulfillment в ITSM Core, обеспечивая стандартизированную доставку от запроса до предоставления.",
+      "Service Catalog реализован как структурированный каталог с иерархией услуг, шаблонами запросов, привязкой к SLA и процессам fulfillment. Поддерживает портал самообслуживания с формами заказа, автоматическое создание запросов в ITSM Core, маршрутизацию на группы fulfillment, отслеживание статуса выполнения. Интеграция с CMDB обеспечивает привязку услуг к CI и бизнес-сервисам. Поддерживается версионирование услуг, ролевой доступ и многоязычность.",
+      "Service Catalog повышает прозрачность ИТ-услуг для бизнеса: пользователи видят, что доступно, как заказать и какие сроки. Это снижает объём неформальных запросов и повышает удовлетворённость. Стандартизация fulfillment через каталог сокращает время предоставления типовых услуг на 30–50%. Для ИТ-департамента каталог служит основой для chargeback/showback и обоснования бюджета через прозрачное описание стоимости и объёмов услуг.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "1",
+      "Управление базой знаний (Knowledge Base)",
+      "Функция централизованного хранения процедур, инструкций, решений типовых проблем и Known Errors для поддержки оперативной диагностики и самообслуживания. Knowledge Base интегрирована с процессами ITSM Core: статьи привязываются к CI, категориям инцидентов и проблемам, используются Service Desk для повышения FCR и инженерами для ускорения разрешения.",
+      "Knowledge Base реализована как структурированное хранилище статей с категоризацией, полнотекстовым поиском, привязкой к CI и процессам. Поддерживает: шаблоны статей, версионирование, workflow утверждения, аналитику использования (какие статьи чаще всего ищут), интеграцию с Service Desk для предложения релевантных решений, авто-создание статей из разрешённых инцидентов. Интеграция с Problem Management обеспечивает публикацию Known Errors с workarounds.",
+      "Повышает First Call Resolution на 15–25% за счёт предоставления готовых решений агентам первой линии и пользователям портала самообслуживания. Сокращает время разрешения инцидентов: инженеры получают проверенные процедуры вместо поиска решений с нуля. Для новых сотрудников Knowledge Base служит accelerator onboarding'a, сокращая период адаптации. Известные ошибки (Known Errors) позволяют быстро обходить проблемы до их полного устранения.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "категория",
+      "3",
+      "Интеграция с CMDB и внешними системами",
+      "ITSM Core функционирует как оркестрационный узел, потребляющий данные из CMDB, систем мониторинга, APM, HRM и ITAM и возвращающий обработанные артефакты обратно в экосистему. Эта интеграционная функция превращает платформу из изолированного трекера задач в центр управления сервисами, где каждое решение принимается на основе полного контекста — от технических характеристик CI до финансовых атрибутов актива.",
+      "Интеграции реализуются через REST/GraphQL API, вебхуки, событийные шины и ETL-коннекторы. Ключевые связи: двунаправленная синхронизация с CMDB (service map, CI-атрибуты, связи e9/e65), приём оповещений от мониторинга для автоматического создания инцидентов (e10), интеграция с APM для привязки метрик производительности к сервисным событиям (e11), получение данных о качестве конфигурационных элементов (e29), передача данных о релизах в системы развёртывания (e30/e51). Платформа должна обрабатывать создание инцидентов со скоростью не менее 100 событий в минуту.",
+      "Интеграция снижает время диагностики и разрешения инцидентов на 25–40%, поскольку каждое обращение поступает с предзаполненным контекстом: владелец CI, критичность сервиса, зависимые компоненты, история изменений. Это исключает ручной сбор информации из разрозненных систем и позволяет принимать обоснованные решения — например, выбирать между ремонтом и заменой актива на основе его финансовых атрибутов из ITAM. Полнота интеграций напрямую определяет зрелость сервисного управления.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "3",
+      "Интеграция с CMDB",
+      "Двунаправленная интеграция ITSM Core с CMDB является архитектурной основой контекстуального управления сервисами. ITSM Core получает service map и CI-атрибуты для приоритизации и маршрутизации, а возвращает в CMDB контекст инцидентов, изменений и проблем для обогащения golden record. Без связи с CMDB ITSM превращается в систему учёта обращений, а не управления сервисами: инциденты лишены контекста, а impact analysis становится невозможным.",
+      "Интеграция реализуется через REST/GraphQL API CMDB с двунаправленным обменом. Входящие данные: service map (зависимости сервисов для impact analysis), CI-атрибуты (критичность, владелец, местоположение, финансовые параметры), качество CI-фиды (e9, e29). Исходящие данные: история инцидентов по CI, статусы изменений, рисковые метки (e65). Запросы к CMDB выполняются синхронно при создании инцидента (время отклика < 2 секунд при 500 000+ CI) и асинхронно при обновлениях. Поддерживается кэширование критичных атрибутов для работы при временной недоступности CMDB.",
+      "Интеграция с CMDB сокращает MTTR на 40–60%: инженер сразу видит, какой сервис затронут, кто владелец, какие зависимые компоненты подвержены риску. Impact analysis при планировании изменений повышает??? изменений с 65% до 90%, поскольку CAB принимает решения на основе полной картины влияния, а не интуиции. Обратное обогащение CMDB контекстом инцидентов создаёт полный профиль актива для стратегических решений — ремонт, замена или модернизация.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "3",
+      "Интеграция с мониторингом",
+      "Механизм автоматического создания инцидентов в ITSM Core на основе оповещений (alerts) от систем мониторинга и APM. Критический alert от Monitoring преобразуется в инцидент с предзаполненными полями: источник, время, технические параметры, приоритет на основе критичности CI из CMDB. Эта интеграция замыкает цикл от обнаружения проблемы до начала процесса разрешения, исключая ручной перенос данных между системами.",
+      "Интеграция реализуется через REST API, вебхуки или событийные шины. Monitoring отправляет alert с payload: идентификатор CI, метрика, пороговое значение, severity. ITSM Core запрашивает CMDB для определения критичности сервиса и владельца, создаёт инцидент с автоматическим присвоением приоритета и маршрутизацией. APM передаёт traces и метрики латентности (e11), которые при превышении порогов инициируют инциденты категории 'деградация производительности'. Поддерживается правило корреляции: одновременный alert от Monitoring и аномалия от APM повышают приоритет инцидента.",
+      "Сокращает MTTD (Mean Time To Detect) с часов до минут: критический alert создаёт инцидент в течение 1–2 минут без участия оператора. При пиковых нагрузках система обрабатывает 100+ событий в минуту без деградации. Корреляция с CMDB обеспечивает правильную приоритизацию: alert от критичного сервера обработки платежей получает P1 и маршрутизацию на платёжную команду, а аналогичный alert от тестового сервера — низкий приоритет. Это снижает alert fatigue и фокусирует внимание команд на действительно критичных событиях.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "2",
+      "Service Desk интеграция",
+      "Интеграция ITSM Core с Service Desk обеспечивает бесшовный переход обращений от точки входа к процессной обработке. Service Desk принимает обращение через мультиканальные каналы (портал, email, телефон, чат), классифицирует его и передаёт в ITSM Core для управления жизненным циклом. Обратно Service Desk получает статусы и уведомления для информирования пользователей. Без связи Service Desk с Core обращения теряются или дублируются.",
+      "Интеграция реализована через внутренний API платформы (связь e67). Service Desk передаёт структурированное обращение с атрибутами: категория, приоритет, описание, запроситель, CI (если идентифицирован). ITSM Core создаёт процессный объект (инцидент, запрос на изменение, обращение в Service Catalog), назначает исполнителя и возвращает номер и статус. Интеграция с Knowledge Base позволяет Service Desk предлагать статьи самообслуживания до создания обращения. Поддерживается bi-directional sync статусов, комментариев и уведомлений.",
+      "Обеспечивает пользователям прозрачность и единый канал доступа к ИТ-услугам: статус обращения виден в портале самообслуживания, уведомления приходят автоматически. Интеграция с Knowledge Base повышает FCR (First Call Resolution) на 15–25%, поскольку агенты первой линии получают готовые решения. Единая точка контакта снижает нагрузку на инженеров второй и третьей линии и повышает удовлетворённость пользователей через сокращение времени получения помощи.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "категория",
+      "2",
+      "SLA-менеджмент и отчётность",
+      "Функция управления уровнями сервиса (SLA), операционными соглашениями (OLA) и индикаторами (SLI) обеспечивает контролируемость сервисных процессов через измеримые целевые показатели. Отчётный модуль платформы превращает операционные данные в управленческую информацию: дашборды по MTTR, MTBF, проценту инцидентов в SLA, трендам изменений и эффективности процессов. Без этой функции организация управляет сервисами вслепую, не имея объективных данных для принятия решений.",
+      "SLA-менеджмент реализован через настраиваемые модели соглашений с привязкой к календарям работы, периодам обслуживания и матрицам приоритетов. Расчёт ведётся в реальном времени с учётом времени реакции и разрешения по каждому инциденту. Отчётный модуль включает встроенные дашборды (P1-инциденты, процент изменений с инцидентами, проблемы в работе), OLAP-аналитику и возможность экспорта в BI/DWH. Интеграция с CMDB позволяет строить отчёты по сервисам, бизнес-линиям и владельцам.",
+      "SLA-менеджмент обеспечивает прозрачность и подотчётность: заказчики ИТ-услуг видят реальные сроки реакции и разрешения, а руководство получает объективные метрики эффективности. Сокращение MTTR на 30% за счёт автоматизации и контекста напрямую транслируется в снижение финансовых потерь от простоя. Для регулируемых отраслей (фарма, финансы) доказуемое соответствие SLA является обязательным требованием compliance. Отчётность поддерживает непрерывное улучшение процессов через анализ трендов и выявление узких мест.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "3",
+      "Расчёт SLA/OLA",
+      "Функция расчёта и контроля выполнения уровней сервиса (SLA), операционных соглашений (OLA) и целевых индикаторов (SLI). Платформа отслеживает время реакции и разрешения по каждому инциденту в реальном времени, учитывая календари работы, периоды обслуживания и матрицы приоритетов. При приближении к порогам SLA автоматически запускается эскалация. Без контроля SLA организация не может гарантировать качество сервисов и управлять ожиданиями заказчиков.",
+      "SLA-расчёт реализован через временные движки с поддержкой рабочих календарей (включая часовые пояса), исключения периодов обслуживания (maintenance windows), пауз при ожидании заказчика и пересчёта при изменении приоритета. OLA контролируют внутренние соглашения между линиями поддержки. SLI измеряют объективные показатели: доступность, latency, процент успешных запросов. Дашборды отображают процент инцидентов в SLA по приоритетам, тренды нарушений, команды-лидеры и аутсайдеры. Поддерживается экспорт метрик в BI/DWH.",
+      "Обеспечивает доказуемое качество сервисов для внутренних и внешних заказчиков. Прозрачность SLA повышает доверие бизнеса к ИТ-функции и позволяет строить партнёрские отношения вместо конфронтации. Выявление систематических нарушений OLA конкретными командами даёт объективную основу для инвестиций в обучение или расширение штата. Для регулируемых отраслей документированное соответствие SLA является обязательным элементом compliance и защиты при аудитах.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "2",
+      "Отчётность и дашборды",
+      "Модуль аналитики и визуализации, преобразующий операционные данные ITSM в управленческую информацию. Включает встроенные дашборды по ключевым метрикам процессов (MTTR, MTBF, процент P1-инцидентов, доля изменений с инцидентами), OLAP-анализ с детализацией до уровня команд, сервисов и отдельных CI, трендовые отчёты и возможность экспорта в BI/DWH. Без качественной отчётности руководство принимает решения на основе фрагментарных данных.",
+      "Отчётный модуль построен на агрегационном движке с поддержкой многомерного анализа (OLAP). Источники данных: записи инцидентов, изменений, проблем, SLA-метрики, CI-атрибуты из CMDB. Визуализация включает дашборды реального времени, трендовые графики, heat maps инцидентов по сервисам, анализ первопричин (Pareto), сравнительную аналитику команд. Поддерживается широкий набор форматов экспорта (PDF, Excel, CSV) и API-интеграция с BI/DWH для построения сквозной управленческой отчётности. Время формирования стандартного отчёта — менее 5 минут.",
+      "Предоставляет руководству объективную картину эффективности ИТ-операций для принятия решений: где концентрируются инциденты, какие команды справляются с SLA, какие сервисы требуют инвестиций. Выявление трендов позволяет переходить от реактивного к проактивному управлению: рост инцидентов по конкретному сервису сигнализирует о необходимости технического ревью или замены компонента. Интеграция с Executive Dashboards переводит ИТ-метрики на язык бизнеса: деньги, риски и конкурентные позиции.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "функция",
+      "2",
+      "Календарь изменений (Change Calendar)",
+      "Функция визуализации и планирования окон изменений, предотвращающая конфликты при внесении изменений в общие компоненты инфраструктуры. Change Calendar отображает все запланированные изменения и релизы на временной шкале с возможностью фильтрации по сервисам, командам и критичности. CAB использует календарь для принятия решений о согласовании изменений с учётом существующей загрузки и зависимостей.",
+      "Change Calendar реализован как интерактивная временная шкала с данными из модулей Change Management и Release Management. Поддерживается фильтрация по сервисам, командам, типам изменений, CI, окружениям. Система автоматически обнаруживает конфликты (пересечение изменений по общим CI) и предупреждает при попытке запланировать изменение в запрещённый период. Интеграция с CMDB обеспечивает проверку зависимостей: изменение, затрагивающее CI с 10+ зависимыми сервисами, требует расширенного согласования. Поддерживается экспорт в корпоративные календари.",
+      "Снижает частоту сбоев от конфликтующих изменений на 25–40% за счёт визуального контроля пересечений. Для организаций с сотнями изменений в неделю Change Calendar становится инструментом операционного планирования, аналогичным производственному календарю. CAB принимает решения на основе полной картины загрузки, а не фрагментарных данных. Исключение изменений в критичные периоды (отчётность, высокий сезон) обеспечивает стабильность ключевых бизнес-процессов.",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  ]
+}

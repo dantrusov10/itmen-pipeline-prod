@@ -1,0 +1,927 @@
+/* ITMen Q3 — пайплайн: дашборд, паспорт сделок, скоринг */
+const STORAGE_KEY = "itmen_pipeline_v2";
+const PAGES = {
+  panel: { title: "Дашборд пайплайна", icon: "📊" },
+  deals: { title: "Паспорт сделок", icon: "📋" },
+  scoring: { title: "Модель скоринга", icon: "⚖️" },
+};
+
+let state = null;
+let editingDealIdx = null;
+let modalSuggestion = null;
+let saveInFlight = null;
+
+async function loadStateFromServer() {
+  if (window.ITMEN_API?.enabled) {
+    try {
+      return migrateState(await apiLoadPipeline());
+    } catch (e) {
+      if (e.message !== "Unauthorized") console.error(e);
+      throw e;
+    }
+  }
+  return loadStateLocal();
+}
+
+function loadStateLocal() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return migrateState(JSON.parse(saved));
+    const legacy = localStorage.getItem("itmen_pipeline_v1");
+    if (legacy) {
+      const parsed = migrateState(JSON.parse(legacy));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      return parsed;
+    }
+  } catch (_) {}
+  return migrateState(structuredClone(window.ITMEN_INITIAL));
+}
+
+function migrateState(s) {
+  s.deals = (s.deals || []).map(d => {
+    const m = migrateDeal(d);
+    if (m.budgetStatus === "Запланирован") m.budgetStatus = "Планируется согласование";
+    if (m.techResearch) m.techResearch = typeof migrateTechResearch === "function" ? migrateTechResearch(m.techResearch) : m.techResearch;
+    return m;
+  });
+  const init = window.ITMEN_INITIAL || {};
+  const cfg = window.ITMEN_CONFIG || {};
+  s.lists = { ...(s.lists || {}), ...(init.lists || {}) };
+  if (cfg.budgetPeriods) s.lists.budgetPeriods = cfg.budgetPeriods;
+  if (cfg.budgetStatuses) s.lists.budgetStatus = cfg.budgetStatuses;
+  if (init.lists?.partners) s.lists.partners = init.lists.partners;
+  if (s.lists?.owners?.includes("Не назначен")) {
+    s.lists.owners = s.lists.owners.filter(o => o !== "Не назначен");
+  }
+  if (!s.nextId) {
+    const nums = s.deals.map(d => {
+      const m = String(d.id || "").match(/D-(\d+)/);
+      return m ? +m[1] : 0;
+    });
+    s.nextId = Math.max(0, ...nums, init.nextId || 0, 0) + 1;
+  }
+  syncScoringFromConfig(s);
+  return s;
+}
+
+async function saveState() {
+  if (saveInFlight) await saveInFlight;
+  saveInFlight = (async () => {
+    if (window.ITMEN_API?.enabled) {
+      try {
+        await apiSavePipeline(state);
+        showToast("Сохранено на сервере");
+      } catch (e) {
+        alert("Ошибка сохранения: " + e.message);
+        throw e;
+      }
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      showToast("Данные сохранены локально");
+    }
+  })();
+  await saveInFlight;
+  saveInFlight = null;
+}
+
+function currentUserName() {
+  return window.ITMEN_API?.user?.name || null;
+}
+
+function isAdmin() {
+  return window.ITMEN_API?.user?.role === "admin";
+}
+
+function updateUserBar() {
+  const el = document.getElementById("user-bar");
+  if (!el) return;
+  const u = window.ITMEN_API?.user;
+  if (!u) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <span class="user-name">${escapeHtml(u.name)}</span>
+    <span class="badge ${u.role === "admin" ? "badge-hot" : "badge-ok"}">${u.role === "admin" ? "Admin" : "Менеджер"}</span>
+    <button class="btn btn-sm" id="btn-logout">Выход</button>`;
+  document.getElementById("btn-logout")?.addEventListener("click", () => apiLogout());
+}
+
+async function resetState() {
+  if (!isAdmin()) {
+    alert("Сброс доступен только администратору");
+    return;
+  }
+  if (!confirm("Сбросить все данные к начальным?")) return;
+  state = migrateState(structuredClone(window.ITMEN_INITIAL));
+  await saveState();
+  renderAll();
+  showToast("Данные сброшены");
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function navigate(page) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav a").forEach(a => a.classList.remove("active"));
+  document.getElementById("page-" + page)?.classList.add("active");
+  document.querySelector(`.nav a[data-page="${page}"]`)?.classList.add("active");
+  document.getElementById("page-title").textContent = PAGES[page]?.title || page;
+  location.hash = page;
+  document.getElementById("sidebar")?.classList.remove("open");
+}
+
+function renderAll() {
+  const metrics = calcMetrics(state.deals);
+  renderPanel(metrics);
+  renderDeals(metrics.deals);
+  renderScoring();
+}
+
+function metricCard(label, value, sub) {
+  return `<div class="metric-card"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+}
+
+function renderPanel(m) {
+  const el = document.getElementById("page-panel");
+  if (!el) return;
+  const f = state.pipelineFocus || {};
+  const n = m.deals.length;
+  const scorecard = [
+    ["Взвешенный прогноз", formatMoney(m.weighted), "> 0", kpiStatus(m.weighted, 1, "money")],
+    ["Доля горячих", formatPct(m.hotShare), "≥ 20%", kpiStatus(m.hotShare, 0.2, "pct")],
+    ["Коммиты ≥ протокол", m.strongCommits, "≥ 3", kpiStatus(m.strongCommits, 3, "count")],
+    ["Полнота паспортов", formatPct(m.passportCompleteness), "≥ 90%", kpiStatus(m.passportCompleteness, 0.9, "pct")],
+  ];
+  const maxCommit = Math.max(1, ...Object.values(m.commitCounts));
+  const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
+  const catTotal = Math.max(1, n);
+  const catColors = { "Горячая": "#c0392b", "Тёплая": "#e67e22", "Наблюдение": "#3498db", "Отказ": "#95a5a6" };
+
+  const ownerRows = Object.entries(m.byOwner || {}).sort((a, b) => b[1].weighted - a[1].weighted);
+  const budgetRows = Object.entries(m.byBudget || {}).sort((a, b) => b[1].pipeline - a[1].pipeline);
+
+  el.innerHTML = `
+    <div class="grid grid-4" style="margin-bottom:1rem">
+      ${metricCard("Сделок в пайплайне", n)}
+      ${metricCard("Общий пайплайн", formatMoney(m.totalPipeline))}
+      ${metricCard("Взвешенный прогноз", formatMoney(m.weighted), m.avgScore != null ? `ср. балл ${m.avgScore}` : "")}
+      ${metricCard("Подтв. бюджет", m.confirmedBudget, formatMoney(m.confirmedBudgetSum))}
+    </div>
+    <div class="grid grid-4" style="margin-bottom:1rem">
+      ${metricCard("Горячие", m.counts["Горячая"] || 0, `${n ? Math.round((m.counts["Горячая"]||0)/n*100) : 0}%`)}
+      ${metricCard("Тёплые", m.counts["Тёплая"] || 0)}
+      ${metricCard("На пилоте", m.inPilot || 0, "стадии пилота")}
+      ${metricCard("Тех. соответствие", m.avgProductPct != null ? m.avgProductPct + "%" : "—", m.avgPilotPct != null ? `пилот ${m.avgPilotPct}%` : "")}
+    </div>
+    <div class="grid grid-4" style="margin-bottom:1.5rem">
+      ${metricCard("Неполные паспорта", m.incomplete, "требуют данных")}
+      ${metricCard("Флаги риска", m.riskFlags, "критичные")}
+      ${metricCard("Устарели", m.stale, "> 14 дней без обновления")}
+      ${metricCard("Наблюдение / Отказ", (m.counts["Наблюдение"]||0) + (m.counts["Отказ"]||0))}
+    </div>
+
+    <div class="track-card" style="margin-bottom:1.5rem">
+      <h4>${escapeHtml(f.title || "Текущий пайплайн")}</h4>
+      <div class="meta">
+        <div><strong>Цель Q3:</strong> ${escapeHtml(f.goal)}</div>
+        <div><strong>Главный риск:</strong> ${escapeHtml(f.risk)}</div>
+        <div><strong>Следующий шаг:</strong> ${escapeHtml(f.nextStep)}</div>
+      </div>
+    </div>
+
+    <div class="section-title">Распределение по категориям</div>
+    <div class="category-bars" style="margin-bottom:1.5rem">
+      ${["Горячая", "Тёплая", "Наблюдение", "Отказ"].map(cat => {
+        const c = m.counts[cat] || 0;
+        return `<div class="cat-bar-row">
+          <span class="name">${cat}</span>
+          <div class="bar-wrap"><div class="bar" style="width:${(c/catTotal)*100}%;background:${catColors[cat]}"></div></div>
+          <span class="count">${c}</span>
+          <span class="pct">${n ? Math.round(c/n*100) : 0}%</span>
+        </div>`;
+      }).join("")}
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:1.5rem">
+      <div class="card">
+        <div class="card-header">KPI пайплайна Q3</div>
+        <div class="card-body table-wrap">
+          <table class="scorecard-table">
+            <thead><tr><th>KPI</th><th>Значение</th><th>Цель</th><th></th></tr></thead>
+            <tbody>${scorecard.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Воронка коммитов</div>
+        <div class="card-body">
+          <div class="funnel">
+            ${Object.entries(m.commitCounts).map(([name, count]) => `
+              <div class="funnel-row">
+                <span class="name">${escapeHtml(name)}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(count / maxCommit) * 100}%"></div></div>
+                <span class="count">${count}</span>
+              </div>`).join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:1.5rem">
+      <div class="card">
+        <div class="card-header">По владельцам (менеджерам)</div>
+        <div class="card-body table-wrap">
+          <table class="dash-table">
+            <thead><tr><th>Менеджер</th><th>Сделок</th><th>Пайплайн</th><th>Взвеш.</th><th>Гор./Тёпл.</th><th>Балл</th></tr></thead>
+            <tbody>${ownerRows.map(([name, v]) => `<tr>
+              <td>${escapeHtml(name)}</td><td>${v.count}</td>
+              <td class="num">${formatMoney(v.pipeline)}</td>
+              <td class="num">${formatMoney(v.weighted)}</td>
+              <td>${v.hot}/${v.warm}</td>
+              <td>${v.avgScore ?? "—"}</td>
+            </tr>`).join("") || "<tr><td colspan='6' class='muted'>Нет данных</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Воронка по стадиям (amoCRM)</div>
+        <div class="card-body">
+          <div class="funnel">
+            ${(m.stageFunnel || []).map(({ stage, count }) => `
+              <div class="funnel-row">
+                <span class="name" title="${escapeHtml(stage)}">${escapeHtml(stage.length > 22 ? stage.slice(0, 20) + "…" : stage)}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(count / maxStage) * 100}%;background:#2c5282"></div></div>
+                <span class="count">${count}</span>
+              </div>`).join("") || "<div class='muted'>Нет сделок</div>"}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:1.5rem">
+      <div class="card">
+        <div class="card-header">Статус бюджета</div>
+        <div class="card-body table-wrap">
+          <table class="dash-table">
+            <thead><tr><th>Статус</th><th>Сделок</th><th>Сумма пайплайна</th></tr></thead>
+            <tbody>${budgetRows.map(([st, v]) => `<tr>
+              <td>${escapeHtml(st)}</td><td>${v.count}</td><td class="num">${formatMoney(v.pipeline)}</td>
+            </tr>`).join("") || "<tr><td colspan='3' class='muted'>—</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Что ищут клиенты (сегменты)</div>
+        <div class="card-body">
+          <div class="funnel">
+            ${(m.topSegments || []).map(([seg, count]) => `
+              <div class="funnel-row">
+                <span class="name">${escapeHtml(seg)}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(count / Math.max(1, m.topSegments[0]?.[1] || 1)) * 100}%;background:#38a169"></div></div>
+                <span class="count">${count}</span>
+              </div>`).join("") || "<div class='muted'>Заполните блок «Что ищут» в паспортах</div>"}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-header">Top-10 сделок по взвешенному прогнозу</div>
+      <div class="card-body table-wrap">
+        <table class="dash-table">
+          <thead><tr><th>Клиент</th><th>Владелец</th><th>Стадия</th><th>Сумма</th><th>Взвеш.</th><th>Балл</th><th>Категория</th><th>Бюджет</th></tr></thead>
+          <tbody>${(m.topDeals || []).map(d => `<tr>
+            <td><strong>${escapeHtml(d.customer)}</strong></td>
+            <td>${escapeHtml(d.owner)}</td>
+            <td><small>${escapeHtml(d.stage)}</small></td>
+            <td class="num">${formatMoney(d.amount)}</td>
+            <td class="num">${formatMoney(d.weighted)}</td>
+            <td>${d.score ?? "—"}</td>
+            <td>${categoryBadge(d.category)}</td>
+            <td><small>${escapeHtml(d.budgetStatus)}</small></td>
+          </tr>`).join("") || "<tr><td colspan='8' class='muted'>Нет сделок</td></tr>"}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    ${(m.attention || []).length ? `
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-header">⚠ Требуют внимания</div>
+      <div class="card-body table-wrap">
+        <table class="dash-table">
+          <thead><tr><th>Клиент</th><th>Владелец</th><th>Проблема</th><th>Задача до</th><th></th></tr></thead>
+          <tbody>${m.attention.map(d => {
+            const issues = [];
+            if (d.quality === "Неполный") issues.push("Неполный паспорт");
+            if (d.daysTo != null && d.daysTo < 0) issues.push("Просрочена задача");
+            if (d.riskFlag === "Устарела (>14 дн.)") issues.push("Устарела");
+            if (d.category === "Горячая" && d.budgetStatus === "Нет бюджета") issues.push("Горячая без бюджета");
+            if (d.riskFlag && !issues.includes(d.riskFlag)) issues.push(d.riskFlag);
+            const idx = state.deals.findIndex(x => x.id === d.id);
+            return `<tr>
+              <td>${escapeHtml(d.customer)}</td>
+              <td>${escapeHtml(d.owner)}</td>
+              <td>${issues.map(i => `<span class="badge badge-warn">${escapeHtml(i)}</span>`).join(" ")}</td>
+              <td>${escapeHtml(d.taskDue)}${d.daysTo != null ? ` <small>(${d.daysTo} дн.)</small>` : ""}</td>
+              <td>${idx >= 0 ? `<button class="btn btn-sm" onclick="openDealModal(${idx})">✏️</button>` : ""}</td>
+            </tr>`;
+          }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ""}
+
+    <div class="note">${window.ITMEN_API?.enabled ? "Данные на сервере · автосохранение при изменениях." : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
+}
+
+function filterDeals(deals) {
+  const cat = document.getElementById("deal-filter")?.value;
+  const q = document.getElementById("deal-quality-filter")?.value;
+  return deals.filter(d => {
+    if (cat && d.category !== cat) return false;
+    if (q === "incomplete" && d.quality !== "Неполный") return false;
+    if (q === "risk" && !d.riskFlag) return false;
+    return true;
+  });
+}
+
+function renderDeals(deals) {
+  const el = document.getElementById("page-deals");
+  if (!el) return;
+  el.innerHTML = `
+    <div style="margin-bottom:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="openDealModal()">+ Добавить сделку</button>
+      <label class="btn" style="cursor:pointer">⬆️ Импорт Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>
+      <a class="btn" href="${window.ITMEN_API?.enabled ? "/api/export/template" : "ITMen_Pipeline_Шаблон_менеджеров.xlsx"}" ${window.ITMEN_API?.enabled ? "" : "download"}>⬇️ Шаблон Excel</a>
+      <select id="deal-filter" class="btn" onchange="renderAll()" style="width:auto">
+        <option value="">Все категории</option>
+        <option value="Горячая">Горячая</option>
+        <option value="Тёплая">Тёплая</option>
+        <option value="Наблюдение">Наблюдение</option>
+        <option value="Отказ">Отказ</option>
+      </select>
+      <select id="deal-quality-filter" class="btn" onchange="renderAll()" style="width:auto">
+        <option value="">Все</option>
+        <option value="incomplete">Только неполные</option>
+        <option value="risk">С флагом риска</option>
+      </select>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="deals-table">
+      <thead><tr>
+        <th>ID</th><th>Клиент</th><th>Владелец</th>
+        <th>Ожид. сумма</th><th>Ожид. бюджет</th><th>Партнёр</th>
+        <th>План. бюджет</th><th>% проект</th><th>% пилот</th><th>Балл</th><th>Категория</th>
+        <th>Коммит</th><th>Качество</th><th>Риск</th><th>Задача до</th><th></th>
+      </tr></thead>
+      <tbody>${filterDeals(deals).map(d => {
+        const realIdx = state.deals.findIndex(x => x.id === d.id);
+        const cls = d.quality === "Неполный" ? "row-incomplete" : d.riskFlag ? "row-risk" : "";
+        const disc = d.clientDiscount ? `<br><small>−${d.clientDiscount}% клиенту</small>` : "";
+        return `<tr class="${cls}">
+          <td>${escapeHtml(d.id)}</td>
+          <td><strong>${escapeHtml(d.customer)}</strong><br><small>${escapeHtml(d.stage)}</small></td>
+          <td>${escapeHtml(d.owner)}</td>
+          <td class="num">${formatMoney(d.amount)}<br><small>${formatMoney(d.weighted)} взв.</small></td>
+          <td class="num">${formatMoney(d.expectedBudget || 0)}</td>
+          <td>${escapeHtml(d.partner || "—")}${d.partnerDiscount ? `<br><small>${d.partnerDiscount}% партн.</small>` : ""}</td>
+          <td>${escapeHtml(d.budgetPeriod || "—")}<br><small>${escapeHtml(d.budgetStatus)}${d.budgetPlannedMonth ? `<br>${["","Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"][d.budgetPlannedMonth] || ""} ${d.budgetPlannedYear || ""}` : ""}</small>${disc}</td>
+          <td class="num">${d.projectCompliancePct != null ? d.projectCompliancePct + "%" : "—"}</td>
+          <td class="num">${d.pilotCompliancePct != null ? d.pilotCompliancePct + "%" : "—"}</td>
+          <td class="num">${d.score ?? "—"}</td>
+          <td>${categoryBadge(d.category)}</td>
+          <td>${escapeHtml(d.commitLabel)}</td>
+          <td>${d.quality === "Неполный" ? '<span class="badge badge-warn">Неполный</span>' : '<span class="badge badge-ok">OK</span>'}</td>
+          <td>${d.riskFlag ? `<span class="badge badge-danger">${escapeHtml(d.riskFlag)}</span>` : "—"}</td>
+          <td>${escapeHtml(d.taskDue)}${d.daysTo != null ? `<br><small>${d.daysTo} дн.</small>` : ""}</td>
+          <td class="actions">
+            <button class="btn btn-sm" onclick="openDealModal(${realIdx})">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteDeal(${realIdx})">🗑</button>
+          </td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div></div>`;
+}
+
+function renderScoring() {
+  const el = document.getElementById("page-scoring");
+  if (!el) return;
+  const items = getMergedScoringItems(state.scoring);
+  const legendBlocks = items.map(s => {
+    const scale = buildScoreScale(s);
+    return `<div class="score-legend-block">
+      <h4>${escapeHtml(s.name)} <span class="weight-tag">${Math.round(s.weight * 100)}%</span></h4>
+      <p class="legend-question">${escapeHtml(s.question || "")}</p>
+      <div class="score-legend-grid">
+        ${[5, 4, 3, 2, 1].map(n => `<div class="legend-level"><span class="lvl">${n}</span><span>${escapeHtml(scale[n] || "—")}</span></div>`).join("")}
+        <div class="legend-level muted"><span class="lvl">0</span><span>${escapeHtml(s.s0 || "—")}</span></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="card"><div class="table-wrap"><table class="rubric-table">
+      <thead><tr><th>Критерий</th><th>Вопрос</th><th>Кол.</th><th>Вес</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th><th>0</th><th>Ответственный</th></tr></thead>
+      <tbody>${items.map(s => {
+        const scale = buildScoreScale(s);
+        return `<tr>
+        <td>${escapeHtml(s.name)}</td>
+        <td class="muted" style="max-width:220px;font-size:.75rem">${escapeHtml(s.question || "")}</td>
+        <td>${s.col}</td><td class="weight">${Math.round(s.weight * 100)}%</td>
+        <td>${escapeHtml(scale[5])}</td><td>${escapeHtml(scale[4])}</td><td>${escapeHtml(scale[3])}</td>
+        <td>${escapeHtml(scale[2])}</td><td>${escapeHtml(scale[1])}</td><td>${escapeHtml(s.s0)}</td>
+        <td>${escapeHtml(s.owner)}</td></tr>`;
+      }).join("")}
+      </tbody>
+    </table></div></div>
+    <div class="section-title">Легенда шкалы 1–5 (используется в паспорте сделки)</div>
+    <div class="score-legend-panel">${legendBlocks}</div>
+    <div class="section-title">Пороги категорий</div>
+    <div class="grid grid-4">
+      ${[["Горячая", "≥ 80", "badge-hot"], ["Тёплая", "≥ 60", "badge-warm"], ["Наблюдение", "≥ 40", "badge-watch"], ["Отказ", "< 40", "badge-drop"]]
+        .map(([n, t, c]) => `<div class="metric-card"><span class="badge ${c}">${n}</span><div class="value" style="font-size:1rem;margin-top:.5rem">${t}</div></div>`).join("")}
+    </div>`;
+}
+
+function previewDealId() {
+  return "D-" + String(state.nextId || 1).padStart(3, "0");
+}
+
+function consumeDealId() {
+  const id = previewDealId();
+  state.nextId = (state.nextId || 1) + 1;
+  return id;
+}
+
+function hint(text) {
+  return `<span class="field-hint" title="${escapeHtml(text)}">ⓘ</span>`;
+}
+
+function commitSelect(id, value) {
+  const statuses = window.ITMEN_CONFIG?.commitStatuses || [];
+  const v = normalizeCommitStatus(value);
+  return `<select id="${id}" onchange="updateCommitHint()">
+    ${statuses.map(c => `<option value="${c.id}" ${c.id === v ? "selected" : ""}>${escapeHtml(c.label)}</option>`).join("")}
+  </select>
+  <div class="commit-hint" id="commit-hint">${escapeHtml(statuses.find(c => c.id === v)?.desc || "")}</div>`;
+}
+
+function typeSelect(id, types, value) {
+  return `<select id="${id}">
+    ${types.map(t => `<option value="${t.id}" ${t.id === value ? "selected" : ""}>${escapeHtml(t.label)}</option>`).join("")}
+  </select>`;
+}
+
+function checkboxGroup(containerId, options, selected, inputClass) {
+  const set = new Set(selected || []);
+  return `<div class="checkbox-group" id="${containerId}">${options.map(o =>
+    `<label class="checkbox-label"><input type="checkbox" class="${inputClass}" value="${o.id}" ${set.has(o.id) ? "checked" : ""}> ${escapeHtml(o.label)}</label>`
+  ).join("")}</div>`;
+}
+
+function refreshModelScores() {
+  const keepLoyalty = document.getElementById("s-loyalty")?.value;
+  const draft = {
+    ...collectDealDraft(),
+    techResearch: collectTechResearch(),
+  };
+  modalSuggestion = suggestScores(draft);
+  applyModelScores(true);
+  if (keepLoyalty != null) {
+    const el = document.getElementById("s-loyalty");
+    if (el) el.value = keepLoyalty;
+  }
+  showToast("Скоринг пересчитан по данным формы");
+}
+
+function collectDealDraft() {
+  return {
+    stage: val("f-stage"),
+    budgetStatus: val("f-budgetStatus"),
+    commitStatus: val("f-commitStatus"),
+    amount: +val("f-amount") || 0,
+    expectedBudget: +val("f-expectedBudget") || 0,
+    pains: val("f-pains"),
+    riskType: val("f-riskType"),
+  };
+}
+
+function renderScoreSection(deal, suggestion) {
+  const items = getMergedScoringItems(state.scoring);
+  const manualKeys = new Set(window.ITMEN_CONFIG?.manualScoreKeys || ["loyalty"]);
+
+  const cards = items.map(c => {
+    const cur = deal.scores?.[c.key] ?? 0;
+    const sug = suggestion.scores[c.key] ?? 0;
+    const isManual = manualKeys.has(c.key) || c.manualOnly;
+    const reason = deal.scoreReasons?.[c.key] || suggestion.reasons[c.key] || "";
+    const overridden = deal.scoresOverridden?.[c.key];
+    const hist = (deal.scoreHistory || []).filter(h => h.scores?.[c.key] != null).slice(-3);
+    const histHtml = hist.length ? `<div class="score-history">${hist.map(h =>
+      `<div class="hist-row"><span>${h.date}</span><span>${h.source === "model" ? "модель" : h.source === "import" ? "импорт" : "ручное"}</span><span>${h.scores[c.key]}</span></div>`
+    ).join("")}</div>` : "";
+    const scale = buildScoreScale(c);
+    const suggestHtml = isManual
+      ? `<div class="score-suggest muted">Только ручная оценка · модель не подставляет</div>`
+      : `<div class="score-suggest">Модель: <strong>${sug}</strong>${overridden ? ' · <span class="badge badge-warn">изменено</span>' : ""}</div>`;
+
+    return `<div class="score-card ${overridden ? "overridden" : ""} ${isManual ? "manual-score" : ""}">
+      <div class="score-card-head">
+        <strong>${escapeHtml(c.name)}</strong>
+        <span class="weight-tag">${Math.round(c.weight * 100)}%</span>
+        ${isManual ? '<span class="badge badge-warn">ручная</span>' : ""}
+      </div>
+      <p class="legend-question">${escapeHtml(c.question || "")}</p>
+      ${suggestHtml}
+      <select id="s-${c.key}" onchange="markScoreOverride('${c.key}')">
+        ${[0, 1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+cur === n ? "selected" : ""}>${n}</option>`).join("")}
+      </select>
+      <div class="score-reason">${escapeHtml(reason)}</div>
+      <div class="score-legend-inline">
+        ${[5, 4, 3, 2, 1].map(n =>
+          `<div class="legend-row"><span class="lvl">${n}</span><span>${escapeHtml(scale[n] || "—")}</span></div>`
+        ).join("")}
+        <div class="legend-row muted"><span class="lvl">0</span><span>${escapeHtml(c.s0 || "—")}</span></div>
+      </div>
+      ${histHtml}
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="score-toolbar">
+      <button type="button" class="btn btn-sm" onclick="applyModelScores()">↺ Применить оценку модели</button>
+      <button type="button" class="btn btn-sm" onclick="refreshModelScores()">⟳ Пересчитать по форме</button>
+      <span class="muted">Лояльность — только вручную. Коммит считается из «Статус коммита».</span>
+    </div>
+    <div class="scores-panel">${cards}</div>`;
+}
+
+function openDealModal(idx) {
+  editingDealIdx = idx ?? null;
+  const raw = idx != null ? state.deals[idx] : emptyDeal();
+  const d = migrateDeal(raw);
+  modalSuggestion = suggestScores(d);
+  const hasScores = Object.values(d.scores || {}).some(v => v > 0);
+  if (!hasScores && modalSuggestion) {
+    d.scores = { ...modalSuggestion.scores };
+    d.scoreReasons = { ...modalSuggestion.reasons };
+    d.scores.loyalty = d.scores.loyalty ?? 0;
+    d.scoreReasons.loyalty = "Оценивается только вручную";
+  }
+  const L = state.lists;
+  const isNew = idx == null;
+
+  document.getElementById("deal-modal").querySelector(".modal-body").innerHTML = `
+    <div class="form-section">
+      <div class="form-section-title">Основное</div>
+      <div class="form-grid">
+        <div>
+          <label>ID сделки ${hint("Генерируется автоматически")}</label>
+          <input id="f-id" value="${escapeHtml(d.id)}" readonly class="readonly">
+        </div>
+        <div><label>Клиент</label><input id="f-customer" value="${escapeHtml(d.customer)}" placeholder="Название компании"></div>
+        <div><label>Отрасль</label>${select("f-industry", L.industries, d.industry)}</div>
+        <div><label>Владелец</label>${select("f-owner", L.owners, d.owner || L.owners[0])}</div>
+        <div><label>Стадия (amoCRM)</label>${select("f-stage", L.stages, d.stage)}</div>
+        <div><label>Ожидаемая сумма, ₽ ${hint(window.ITMEN_CONFIG?.fieldHints?.expectedAmount || "")}</label><input type="number" id="f-amount" value="${d.amount || 0}"></div>
+        <div><label>Ожидаемый бюджет, ₽ ${hint(window.ITMEN_CONFIG?.fieldHints?.expectedBudget || "")}</label><input type="number" id="f-expectedBudget" value="${d.expectedBudget || d.budgetAmount || 0}"></div>
+        <div><label>Партнёр</label>${select("f-partner", L.partners || ["Нет партнёра"], d.partner || "Нет партнёра")}</div>
+        <div><label>Скидка партнёру, % ${hint(window.ITMEN_CONFIG?.fieldHints?.partnerDiscount || "")}</label><input type="number" step="0.1" min="0" max="100" id="f-partnerDiscount" value="${d.partnerDiscount || 0}"></div>
+        <div><label>Скидка клиенту, % ${hint(window.ITMEN_CONFIG?.fieldHints?.clientDiscount || "")}</label><input type="number" step="0.1" min="0" max="100" id="f-clientDiscount" value="${d.clientDiscount || 0}"></div>
+        <div><label>Вероятность (ручная, 0–1)</label><input type="number" step="0.05" min="0" max="1" id="f-manualProb" value="${d.manualProb || 0}"></div>
+        <div>
+          <label>Срок ближайшей задачи ${hint(window.ITMEN_CONFIG?.fieldHints?.taskDue || "")}</label>
+          <input type="date" id="f-taskDue" value="${d.taskDue || ""}">
+        </div>
+        <div>
+          <label>Плановый период бюджета ${hint(window.ITMEN_CONFIG?.fieldHints?.budgetPeriod || "")}</label>
+          ${select("f-budgetPeriod", L.budgetPeriods || ["Не определён"], d.budgetPeriod || "Не определён")}
+        </div>
+        <div><label>Статус бюджета</label>${select("f-budgetStatus", L.budgetStatus, d.budgetStatus, "toggleBudgetPlannedDate()")}</div>
+        ${renderBudgetPlannedFields(d.budgetPlannedMonth, d.budgetPlannedYear, d.budgetStatus)}
+        <div><label>Статус коммита клиента</label>${commitSelect("f-commitStatus", d.commitStatus)}</div>
+        <div class="full"><label>Ключевые боли</label><textarea id="f-pains" placeholder="Что болит у клиента">${escapeHtml(d.pains)}</textarea></div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Следующий шаг и риски</div>
+      <div class="form-grid">
+        <div class="full">
+          <label>Тип следующего шага</label>
+          ${typeSelect("f-nextStepType", window.ITMEN_CONFIG?.nextStepTypes || [], d.nextStepType)}
+          <div class="artifact-hint" id="artifact-hint">Артефакт: ${escapeHtml(nextStepArtifact(d.nextStepType))}</div>
+        </div>
+        <div class="full">
+          <label>Комментарий к следующему шагу</label>
+          <textarea id="f-nextStepComment" placeholder="Конкретика: кто, что, когда">${escapeHtml(d.nextStepComment)}</textarea>
+        </div>
+        <div class="full">
+          <label>Критический риск</label>
+          ${typeSelect("f-riskType", window.ITMEN_CONFIG?.riskTypes || [], d.riskType)}
+        </div>
+        <div class="full">
+          <label>Комментарий к риску</label>
+          <textarea id="f-riskComment" placeholder="Детали риска и план митигации">${escapeHtml(d.riskComment)}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Техническое исследование</div>
+      ${renderTechSection(d.techResearch)}
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Скоринг сделки</div>
+      ${renderScoreSection(d, modalSuggestion)}
+    </div>`;
+
+  document.getElementById("f-nextStepType")?.addEventListener("change", updateArtifactHint);
+  toggleBudgetPlannedDate();
+  document.getElementById("deal-modal").classList.add("open");
+}
+
+function updateCommitHint() {
+  const id = val("f-commitStatus");
+  const c = (window.ITMEN_CONFIG?.commitStatuses || []).find(x => x.id === id);
+  const el = document.getElementById("commit-hint");
+  if (el && c) el.textContent = c.desc;
+}
+
+function updateArtifactHint() {
+  const id = val("f-nextStepType");
+  const el = document.getElementById("artifact-hint");
+  if (el) el.textContent = "Артефакт: " + nextStepArtifact(id);
+}
+
+function applyModelScores(silent) {
+  if (!modalSuggestion) return;
+  const manualKeys = new Set(window.ITMEN_CONFIG?.manualScoreKeys || ["loyalty"]);
+  const criteria = window.ITMEN_CONFIG?.scoreCriteria || [];
+  criteria.forEach(c => {
+    if (manualKeys.has(c.key)) return;
+    const el = document.getElementById("s-" + c.key);
+    if (el) el.value = modalSuggestion.scores[c.key] ?? 0;
+  });
+  if (!silent) showToast("Оценки модели подставлены (лояльность не менялась)");
+}
+
+function markScoreOverride(key) {
+  const card = document.getElementById("s-" + key)?.closest(".score-card");
+  if (card) card.classList.add("overridden");
+}
+
+function emptyDeal() {
+  const defaultOwner = currentUserName() || state.lists?.owners?.[0] || "Аркадий Мерлейн";
+  return {
+    id: previewDealId(),
+    customer: "",
+    industry: "Не определена",
+    owner: defaultOwner,
+    stage: state.lists?.stages?.[0] || "Взят в работу",
+    dealType: "Текущий пайплайн",
+    amount: 0,
+    expectedBudget: 0,
+    partner: "Нет партнёра",
+    partnerDiscount: 0,
+    clientDiscount: 0,
+    manualProb: 0,
+    taskDue: new Date().toISOString().slice(0, 10),
+    budgetPeriod: "Не определён",
+    budgetStatus: "Неизвестно",
+    budgetPlannedMonth: null,
+    budgetPlannedYear: null,
+    budgetAmount: 0,
+    techResearch: typeof defaultTechResearch === "function" ? defaultTechResearch() : { classEntries: {} },
+    pains: "",
+    capabilities: "",
+    dml: "Не определён",
+    scores: { loyalty: 0, commit: 0, budget: 0, fit: 0, timing: 0, competitive: 0, access: 0, technical: 0, commercial: 0 },
+    scoreReasons: {},
+    scoreHistory: [],
+    scoresOverridden: {},
+    nextStepType: "discovery",
+    nextStepComment: "",
+    riskType: "none",
+    riskComment: "",
+    commitStatus: "none",
+    lastUpdate: new Date().toISOString().slice(0, 10),
+    amoId: null,
+  };
+}
+
+function collectScoresFromForm(prevDeal) {
+  const scores = {};
+  const scoreReasons = { ...(prevDeal?.scoreReasons || {}) };
+  const scoresOverridden = { ...(prevDeal?.scoresOverridden || {}) };
+  const scoreHistory = [...(prevDeal?.scoreHistory || [])];
+  const criteria = window.ITMEN_CONFIG?.scoreCriteria || [];
+  const suggestion = modalSuggestion || suggestScores(prevDeal || {});
+  let changed = false;
+  const newScores = {};
+
+  criteria.forEach(c => {
+    const v = +val("s-" + c.key) || 0;
+    newScores[c.key] = v;
+    scores[c.key] = v;
+    const sug = suggestion.scores[c.key] ?? 0;
+    if (v !== sug) scoresOverridden[c.key] = true;
+    if ((prevDeal?.scores?.[c.key] ?? null) !== v) changed = true;
+    if (!scoreReasons[c.key]) scoreReasons[c.key] = suggestion.reasons[c.key] || "";
+  });
+
+  if (changed) {
+    scoreHistory.push({
+      date: new Date().toISOString().slice(0, 10),
+      source: Object.keys(scoresOverridden).length ? "manual" : "model",
+      scores: { ...newScores },
+    });
+  }
+
+  return { scores, scoreReasons, scoresOverridden, scoreHistory };
+}
+
+function saveDealModal() {
+  saveDealModalAsync().catch(e => alert(e.message));
+}
+
+async function saveDealModalAsync() {
+  const prev = editingDealIdx != null ? state.deals[editingDealIdx] : null;
+  const scoreData = collectScoresFromForm(prev);
+  const nextStepType = val("f-nextStepType");
+  const riskType = val("f-riskType");
+
+  const deal = {
+    id: val("f-id"),
+    customer: val("f-customer").trim(),
+    industry: val("f-industry"),
+    owner: val("f-owner"),
+    stage: val("f-stage"),
+    dealType: "Текущий пайплайн",
+    amount: +val("f-amount") || 0,
+    expectedBudget: +val("f-expectedBudget") || 0,
+    partner: val("f-partner"),
+    partnerDiscount: +val("f-partnerDiscount") || 0,
+    clientDiscount: +val("f-clientDiscount") || 0,
+    manualProb: +val("f-manualProb") || 0,
+    taskDue: val("f-taskDue"),
+    budgetPeriod: val("f-budgetPeriod"),
+    budgetStatus: val("f-budgetStatus"),
+    budgetPlannedMonth: val("f-budgetStatus") === "Планируется согласование" ? (+val("f-budgetPlannedMonth") || null) : null,
+    budgetPlannedYear: val("f-budgetStatus") === "Планируется согласование" ? (+val("f-budgetPlannedYear") || null) : null,
+    commitStatus: val("f-commitStatus"),
+    pains: val("f-pains"),
+    nextStepType,
+    nextStepComment: val("f-nextStepComment"),
+    riskType,
+    riskComment: val("f-riskComment"),
+    techResearch: collectTechResearch(),
+    lastUpdate: new Date().toISOString().slice(0, 10),
+    ...scoreData,
+    budgetAmount: +val("f-expectedBudget") || 0,
+    capabilities: prev?.capabilities || "",
+    dml: prev?.dml || "Не определён",
+    amoId: prev?.amoId || null,
+  };
+
+  if (deal.budgetStatus === "Планируется согласование" && (!deal.budgetPlannedMonth || !deal.budgetPlannedYear)) {
+    alert("Укажите месяц и год планируемого согласования бюджета");
+    return;
+  }
+  if (!deal.customer) {
+    alert("Укажите клиента");
+    return;
+  }
+  if (nextStepType === "other" && !deal.nextStepComment.trim()) {
+    alert("Для типа «Другое» нужен комментарий к следующему шагу");
+    return;
+  }
+  if (riskType === "other" && !deal.riskComment.trim()) {
+    alert("Для риска «Другое» нужен комментарий");
+    return;
+  }
+
+  if (!isAdmin() && currentUserName()) deal.owner = currentUserName();
+
+  if (editingDealIdx != null) state.deals[editingDealIdx] = deal;
+  else {
+    deal.id = consumeDealId();
+    state.deals.push(deal);
+  }
+
+  closeModal("deal-modal");
+  await saveState();
+  renderAll();
+}
+
+function deleteDeal(idx) {
+  deleteDealAsync(idx).catch(e => alert(e.message));
+}
+
+async function deleteDealAsync(idx) {
+  if (!confirm("Удалить сделку " + state.deals[idx].id + "?")) return;
+  state.deals.splice(idx, 1);
+  await saveState();
+  renderAll();
+}
+
+function select(id, options, value, onchange) {
+  const oc = onchange ? ` onchange="${onchange}"` : "";
+  return `<select id="${id}"${oc}>${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}</select>`;
+}
+
+function val(id) { return document.getElementById(id)?.value ?? ""; }
+function closeModal(id) { document.getElementById(id)?.classList.remove("open"); }
+
+function exportJson() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "itmen_pipeline_export.json";
+  a.click();
+  showToast("JSON экспортирован");
+}
+
+async function importJson(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      state = migrateState(JSON.parse(e.target.result));
+      await saveState();
+      renderAll();
+      showToast("Данные импортированы");
+    } catch (_) { alert("Ошибка чтения JSON"); }
+  };
+  reader.readAsText(file);
+  input.value = "";
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  if (window.ITMEN_API?.enabled) {
+    try {
+      state = await loadStateFromServer();
+      updateUserBar();
+    } catch {
+      return;
+    }
+  } else {
+    state = loadStateLocal();
+  }
+
+  document.getElementById("nav").innerHTML = Object.entries(PAGES).map(([k, v]) =>
+    `<a href="#${k}" data-page="${k}"><span class="icon">${v.icon}</span>${v.title}</a>`
+  ).join("");
+
+  document.querySelectorAll(".nav a").forEach(a => {
+    a.addEventListener("click", e => { e.preventDefault(); navigate(a.dataset.page); });
+  });
+
+  document.getElementById("btn-save")?.addEventListener("click", saveState);
+  document.getElementById("btn-reset")?.addEventListener("click", resetState);
+  document.getElementById("btn-export")?.addEventListener("click", exportJson);
+  document.getElementById("btn-import")?.addEventListener("change", e => importJson(e.target));
+  document.getElementById("btn-import-excel")?.addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (f) importExcelFile(f);
+    e.target.value = "";
+  });
+  document.getElementById("menu-toggle")?.addEventListener("click", () =>
+    document.getElementById("sidebar").classList.toggle("open"));
+  document.querySelectorAll(".modal-overlay").forEach(m => {
+    m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
+  });
+
+  if (!isAdmin()) document.getElementById("btn-reset")?.style.setProperty("display", "none");
+
+  renderAll();
+  navigate(location.hash.replace("#", "") || "panel");
+});
+
+window.openDealModal = openDealModal;
+window.saveDealModal = saveDealModal;
+window.deleteDeal = deleteDeal;
+window.closeModal = closeModal;
+window.renderAll = renderAll;
+window.applyModelScores = applyModelScores;
+window.markScoreOverride = markScoreOverride;
+window.updateCommitHint = updateCommitHint;
+window.syncTechSegmentPanels = syncTechSegmentPanels;
+window.addCompetitorRow = addCompetitorRow;
+window.removeCompetitorRow = removeCompetitorRow;
+window.toggleCompReasonFields = toggleCompReasonFields;
+window.onVendorSearch = onVendorSearch;
+window.hideVendorDropdownDelayed = hideVendorDropdownDelayed;
+window.selectVendorOpt = selectVendorOpt;
+window.clearVendorPicker = clearVendorPicker;
+window.addTaskRow = addTaskRow;
+window.removeTaskRow = removeTaskRow;
+window.toggleBudgetPlannedDate = toggleBudgetPlannedDate;
+window.refreshModelScores = refreshModelScores;

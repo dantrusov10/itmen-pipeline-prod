@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITMen Pipeline — Вход</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f0f4f8; }
+    .login-card {
+      background: #fff; border-radius: 12px; padding: 2rem 2.5rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08); width: 100%; max-width: 400px;
+    }
+    .login-card h1 { color: var(--navy); font-size: 1.35rem; margin-bottom: .25rem; }
+    .login-card p { color: var(--muted); font-size: .85rem; margin-bottom: 1.5rem; }
+    .login-field { margin-bottom: 1rem; }
+    .login-field label { display: block; font-size: .78rem; margin-bottom: .3rem; color: var(--muted); }
+    .login-field select, .login-field input {
+      width: 100%; padding: .55rem .75rem; border: 1px solid var(--border);
+      border-radius: 6px; font-size: .9rem;
+    }
+    .login-error { color: #c0392b; font-size: .8rem; margin-bottom: .75rem; display: none; }
+    .login-error.show { display: block; }
+    .login-btn { width: 100%; margin-top: .5rem; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h1>ITMen Pipeline</h1>
+    <p>Войдите как менеджер или администратор</p>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-field">
+      <label>Пользователь</label>
+      <select id="login-user"></select>
+    </div>
+    <div class="login-field">
+      <label>PIN-код</label>
+      <input type="password" id="login-pin" placeholder="PIN" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary login-btn" id="login-btn">Войти</button>
+  </div>
+  <script src="js/api.js"></script>
+  <script>
+    (async () => {
+      try {
+        await apiGetMe();
+        location.href = "/";
+        return;
+      } catch { /* not logged in */ }
+
+      const sel = document.getElementById("login-user");
+      const managers = await apiFetch("/api/managers");
+      sel.innerHTML = [
+        `<option value="admin">Администратор (все сделки)</option>`,
+        ...managers.map(m => `<option value="${m.id}">${m.name}</option>`),
+      ].join("");
+
+      async function doLogin() {
+        const err = document.getElementById("login-error");
+        err.classList.remove("show");
+        try {
+          await apiLogin(document.getElementById("login-user").value, document.getElementById("login-pin").value);
+          location.href = "/";
+        } catch (e) {
+          err.textContent = e.message || "Ошибка входа";
+          err.classList.add("show");
+        }
+      }
+
+      document.getElementById("login-btn").addEventListener("click", doLogin);
+      document.getElementById("login-pin").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+    })();
+  </script>
+</body>
+</html>
