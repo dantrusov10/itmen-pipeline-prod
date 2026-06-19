@@ -542,6 +542,10 @@ textarea { min-height: 60px; resize: vertical; }
   position: sticky;
   top: 2.1rem;
   z-index: 1;
+  padding: .25rem .35rem !important;
+  background: #f8fafc;
+  vertical-align: middle;
+  overflow: visible;
 }
 .deals-table thead tr:first-child th {
   position: sticky;
@@ -555,11 +559,6 @@ textarea { min-height: 60px; resize: vertical; }
 .deals-table th.sorted-asc,
 .deals-table th.sorted-desc { background: #2563eb; }
 
-.deals-filter-row th {
-  padding: .25rem .35rem !important;
-  background: #f8fafc;
-  vertical-align: middle;
-}
 .deals-col-filter {
   width: 100%;
   box-sizing: border-box;
@@ -592,29 +591,38 @@ textarea { min-height: 60px; resize: vertical; }
   background: #fff;
   text-align: left;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .deals-ms-toggle:hover { border-color: #2563eb; }
 .deals-ms-panel {
   display: none;
   position: absolute;
   left: 0;
-  right: 0;
   top: calc(100% + 2px);
-  z-index: 12;
+  z-index: 20;
+  min-width: 260px;
+  width: 260px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.12);
-  max-height: 220px;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .14);
+  max-height: 280px;
   overflow: hidden;
+}
+.deals-ms-filter--right .deals-ms-panel {
+  left: auto;
+  right: 0;
 }
 .deals-ms-filter.open .deals-ms-panel { display: flex; flex-direction: column; }
 .deals-ms-actions {
   display: flex;
   justify-content: flex-end;
-  padding: .25rem .35rem;
+  padding: .35rem .5rem;
   border-bottom: 1px solid #f0f0f0;
   background: #f8fafc;
+  flex-shrink: 0;
 }
 .deals-ms-clear {
   font-size: .65rem;
@@ -626,21 +634,40 @@ textarea { min-height: 60px; resize: vertical; }
 }
 .deals-ms-list {
   overflow-y: auto;
-  max-height: 180px;
-  padding: .2rem 0;
+  overflow-x: hidden;
+  max-height: 220px;
+  padding: .25rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
+.deals-ms-list::-webkit-scrollbar { width: 6px; }
+.deals-ms-list::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
+.deals-ms-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.deals-ms-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .deals-ms-opt {
   display: flex;
-  align-items: flex-start;
-  gap: .35rem;
-  padding: .2rem .45rem;
-  font-size: .68rem;
+  align-items: center;
+  gap: .45rem;
+  padding: .35rem .55rem;
+  font-size: .72rem;
   cursor: pointer;
-  line-height: 1.25;
+  line-height: 1.35;
 }
 .deals-ms-opt:hover { background: #f7fafc; }
-.deals-ms-opt input { margin-top: .1rem; flex-shrink: 0; }
-.deals-ms-opt span { word-break: break-word; }
+.deals-ms-opt input {
+  margin: 0;
+  flex-shrink: 0;
+  width: .85rem;
+  height: .85rem;
+  accent-color: #2563eb;
+}
+.deals-ms-opt span {
+  flex: 1;
+  min-width: 0;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 
 .deals-table-hint {
   font-size: .72rem;

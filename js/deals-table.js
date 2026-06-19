@@ -85,8 +85,9 @@ const DEALS_TABLE_COLS = [
   {
     key: "budgetPeriod",
     label: "Срок",
-    filter: "select",
-    filterOptions: () => (state?.lists?.budgetPeriods || window.ITMEN_CONFIG?.budgetPeriods || []),
+    filter: "multiselect",
+    msAlign: "right",
+    filterOptions: deals => resolveBudgetPeriodFilterOptions(deals),
     get: d => d.budgetPeriod || "Не определён",
     render(d) {
       return `<td class="col-deadline"><small>${escapeHtml(d.budgetPeriod || "—")}</small></td>`;
@@ -158,6 +159,15 @@ function resolveStageFilterOptions(deals) {
   const base = state?.lists?.stages || window.ITMEN_INITIAL?.lists?.stages || [];
   const all = [...base];
   [...new Set((deals || []).map(d => d.stage).filter(Boolean))].forEach(s => {
+    if (!all.includes(s)) all.push(s);
+  });
+  return all;
+}
+
+function resolveBudgetPeriodFilterOptions(deals) {
+  const base = state?.lists?.budgetPeriods || window.ITMEN_CONFIG?.budgetPeriods || window.ITMEN_INITIAL?.lists?.budgetPeriods || [];
+  const all = [...base];
+  [...new Set((deals || []).map(d => d.budgetPeriod).filter(Boolean))].forEach(s => {
     if (!all.includes(s)) all.push(s);
   });
   return all;
@@ -240,7 +250,7 @@ function renderMultiselectFilter(col, deals) {
       <span>${escapeHtml(o)}</span>
     </label>`
   ).join("");
-  return `<div class="deals-ms-filter" data-col="${col.key}">
+  return `<div class="deals-ms-filter${col.msAlign === "right" ? " deals-ms-filter--right" : ""}" data-col="${col.key}">
     <button type="button" class="deals-ms-toggle" data-col="${col.key}">${escapeHtml(label)} ▾</button>
     <div class="deals-ms-panel">
       <div class="deals-ms-actions">
