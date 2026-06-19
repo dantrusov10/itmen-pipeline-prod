@@ -5,14 +5,15 @@
   const onGhPages = /\.github\.io$/i.test(location.hostname);
   const onLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 
-  let backend = "express";
-  if (hasGas && (onGhPages || window.ITMEN_FORCE_GAS)) backend = "gas";
-  else if (hasGas && !onLocal) backend = "gas";
+  let backend = "local";
+  if (hasGas && (onGhPages || window.ITMEN_FORCE_GAS || !onLocal)) backend = "gas";
+  else if (onLocal) backend = "express";
 
   window.ITMEN_API = {
-    enabled: backend !== "none",
+    enabled: backend === "gas" || backend === "express",
     backend,
     gasUrl: hasGas ? gasUrl : "",
+    needsGasSetup: onGhPages && !hasGas,
     base: "",
   };
 })();
@@ -30,7 +31,7 @@ async function gasFetch(payload) {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("Некорректный ответ Apps Script");
+    throw new Error("Apps Script вернул некорректный ответ. Проверьте развёртывание (доступ «Все»).");
   }
   if (data.error) throw new Error(data.error);
   return data;
@@ -53,7 +54,13 @@ async function apiFetch(path, opts = {}) {
 async function apiLoadPipeline() {
   if (window.ITMEN_API.backend === "gas") {
     const res = await fetch(`${window.ITMEN_API.gasUrl}?action=get`, { redirect: "follow" });
-    const data = JSON.parse(await res.text());
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("Не удалось прочитать ответ Google Таблицы. Проверьте URL в js/gas-config.js");
+    }
     if (data.error) throw new Error(data.error);
     return data.state || null;
   }
@@ -82,5 +89,19 @@ async function apiListManagers() {
 }
 
 function apiBackendLabel() {
-  return window.ITMEN_API.backend === "gas" ? "Google Таблица" : "сервер";
+  if (window.ITMEN_API.backend === "gas") return "Google Таблица";
+  if (window.ITMEN_API.backend === "express") return "сервер";
+  return "этот браузер";
+}
+
+function showSetupBanner() {
+  if (!window.ITMEN_API?.needsGasSetup) return;
+  const bar = document.createElement("div");
+  bar.id = "setup-banner";
+  bar.style.cssText = "background:#fff3cd;border-bottom:1px solid #ffc107;padding:.6rem 1rem;font-size:.85rem;color:#664d03";
+  bar.innerHTML = `⚠️ <strong>Google Таблица не подключена.</strong> Данные пока только в этом браузере. 
+    Подключите Apps Script — инструкция в 
+    <a href="https://github.com/dantrusov10/itmen-pipeline/blob/master/DEPLOY_GAS.md" target="_blank">DEPLOY_GAS.md</a>
+    (шаги 1–2: таблица + URL в js/gas-config.js).`;
+  document.body.prepend(bar);
 }

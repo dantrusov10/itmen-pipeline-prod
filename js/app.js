@@ -81,7 +81,9 @@ async function saveState() {
       }
     } else {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      showToast("Данные сохранены локально");
+      showToast(typeof apiBackendLabel === "function"
+        ? `Сохранено (${apiBackendLabel()})`
+        : "Данные сохранены локально");
     }
   })();
   await saveInFlight;
@@ -850,12 +852,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.ITMEN_API?.enabled) {
     try {
       state = await loadStateFromServer();
-    } catch {
-      alert("Не удалось загрузить данные с сервера");
+    } catch (e) {
+      alert("Не удалось загрузить данные: " + (e.message || "ошибка сервера")
+        + "\n\nПроверьте URL в js/gas-config.js и развёртывание Apps Script (доступ «Все»).");
       return;
     }
   } else {
     state = loadStateLocal();
+    if (typeof showSetupBanner === "function") showSetupBanner();
   }
 
   document.getElementById("nav").innerHTML = Object.entries(PAGES).map(([k, v]) =>
