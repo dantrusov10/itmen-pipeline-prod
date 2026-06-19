@@ -154,17 +154,17 @@ function bindDealsTableEvents() {
       el.classList.toggle("sorted-asc", el.dataset.sort === dealsTableSort.key && dealsTableSort.dir === "asc");
       el.classList.toggle("sorted-desc", el.dataset.sort === dealsTableSort.key && dealsTableSort.dir === "desc");
     });
-    updateDealsTableBody(getMetrics().deals);
+    updateDealsTableBody(getEnrichedDeals());
   });
   document.getElementById("page-deals")?.addEventListener("input", e => {
     if (e.target.id === "deals-global-search") {
       dealsTableSearch = e.target.value;
-      updateDealsTableBody(getMetrics().deals);
+      updateDealsTableBody(getEnrichedDeals());
     }
   });
   document.getElementById("page-deals")?.addEventListener("change", e => {
     if (e.target.id === "deal-filter" || e.target.id === "deal-quality-filter") {
-      updateDealsTableBody(getMetrics().deals);
+      updateDealsTableBody(getEnrichedDeals());
     }
   });
 }
@@ -187,6 +187,7 @@ function renderDealsTable(deals) {
         <option value="Горячая">Горячая</option>
         <option value="Тёплая">Тёплая</option>
         <option value="Наблюдение">Наблюдение</option>
+        <option value="Отказ">Отказ</option>
       </select>
       <select id="deal-quality-filter" class="btn" style="width:auto">
         <option value="">Все</option>

@@ -17,19 +17,13 @@ function invalidateMetricsCache() {
   metricsCache = null;
 }
 
+function getEnrichedDeals() {
+  return (state.deals || []).map(enrichDeal);
+}
+
 function getMetrics() {
   if (!metricsCache) metricsCache = calcMetrics(state.deals);
   return metricsCache;
-}
-
-function removeRejectedDeals(s) {
-  s.deals = (s.deals || []).filter(d => {
-    const m = migrateDeal({ ...d });
-    const score = calcDealScore(m.scores);
-    const cat = calcCategory(score, m.commitStatus, m.budgetStatus);
-    return cat !== "Отказ";
-  });
-  return s;
 }
 
 async function loadStateFromServer() {
@@ -84,7 +78,7 @@ function migrateState(s) {
     s.nextId = Math.max(0, ...nums, init.nextId || 0, 0) + 1;
   }
   syncScoringFromConfig(s);
-  return removeRejectedDeals(s);
+  return s;
 }
 
 async function saveState() {
@@ -143,7 +137,7 @@ function navigate(page) {
 function renderActivePage() {
   const m = getMetrics();
   if (activePage === "panel") renderPanel(m);
-  else if (activePage === "deals") renderDealsTable(m.deals);
+  else if (activePage === "deals") renderDealsTable(getEnrichedDeals());
   else if (activePage === "scoring") renderScoring();
 }
 
