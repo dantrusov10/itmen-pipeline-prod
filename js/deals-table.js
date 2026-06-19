@@ -285,11 +285,11 @@ function renderColFilter(col, deals) {
 
 function renderDealsTableRow(d) {
   const realIdx = state.deals.findIndex(x => x.id === d.id);
-  return `<tr data-id="${escapeHtml(d.id)}">
+  return `<tr class="deals-row-clickable" data-id="${escapeHtml(d.id)}" title="Открыть паспорт сделки">
     ${DEALS_TABLE_COLS.map(c => c.render(d)).join("")}
     <td class="actions">
-      <button class="btn btn-sm" onclick="openDealModal(${realIdx})" title="Редактировать">✏️</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteDeal(${realIdx})" title="Удалить">🗑</button>
+      <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); openDealModal(${realIdx})" title="Редактировать">✏️</button>
+      <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteDeal(${realIdx})" title="Удалить">🗑</button>
     </td>
   </tr>`;
 }
@@ -439,6 +439,12 @@ function bindDealsTableEvents() {
     if (e.target.id === "deals-clear-filters") {
       clearAllDealsFilters();
       updateDealsTableBody(getEnrichedDeals());
+      return;
+    }
+    const row = e.target.closest("#deals-tbody tr.deals-row-clickable");
+    if (row && !e.target.closest(".actions") && !e.target.closest("button")) {
+      const realIdx = state.deals.findIndex(x => x.id === row.dataset.id);
+      if (realIdx >= 0) openDealModal(realIdx);
     }
   });
 }
