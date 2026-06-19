@@ -12,6 +12,7 @@ let modalSuggestion = null;
 let saveInFlight = null;
 let metricsCache = null;
 let activePage = "panel";
+let dashboardFilters = { owner: "", category: "" };
 
 function invalidateMetricsCache() {
   metricsCache = null;
@@ -21,8 +22,21 @@ function getEnrichedDeals() {
   return (state.deals || []).map(enrichDeal);
 }
 
+function getDashboardDeals() {
+  let deals = state?.deals || [];
+  if (dashboardFilters.owner) deals = deals.filter(d => d.owner === dashboardFilters.owner);
+  if (dashboardFilters.category) {
+    deals = deals.filter(d => enrichDeal(d).category === dashboardFilters.category);
+  }
+  return deals;
+}
+
+function getDashboardMetrics() {
+  return calcMetrics(getDashboardDeals());
+}
+
 function getMetrics() {
-  if (!metricsCache) metricsCache = calcMetrics(state.deals);
+  if (!metricsCache) metricsCache = calcMetrics(state.deals || []);
   return metricsCache;
 }
 
@@ -135,8 +149,7 @@ function navigate(page) {
 }
 
 function renderActivePage() {
-  const m = getMetrics();
-  if (activePage === "panel") renderPanel(m);
+  if (activePage === "panel") renderPanel(getDashboardMetrics());
   else if (activePage === "deals") renderDealsTable(getEnrichedDeals());
   else if (activePage === "scoring") renderScoring();
 }
@@ -154,7 +167,9 @@ function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
   const f = state.pipelineFocus || {};
-  const n = m.pipelineCount ?? m.deals.length;
+  const n = m.pipelineCount ?? m.deals?.length ?? 0;
+  const owners = state.lists?.owners || [];
+  const categories = ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
   const scorecard = [
     ["Взвешенный прогноз", formatMoney(m.weighted), "> 0", kpiStatus(m.weighted, 1, "money")],
     ["Доля горячих", formatPct(m.hotShare), "≥ 20%", kpiStatus(m.hotShare, 0.2, "pct")],
@@ -170,10 +185,25 @@ function renderPanel(m) {
   const budgetRows = Object.entries(m.byBudget || {}).sort((a, b) => b[1].pipeline - a[1].pipeline);
 
   el.innerHTML = `
+    <div class="dashboard-filters">
+      <label>Ответственный
+        <select id="dash-filter-owner" class="dash-filter-select">
+          <option value="">Все</option>
+          ${owners.map(o => `<option value="${escapeHtml(o)}" ${dashboardFilters.owner === o ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+        </select>
+      </label>
+      <label>Категория (порог)
+        <select id="dash-filter-category" class="dash-filter-select">
+          <option value="">Все</option>
+          ${categories.map(c => `<option value="${escapeHtml(c)}" ${dashboardFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+        </select>
+      </label>
+      ${dashboardFilters.owner || dashboardFilters.category ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
+    </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
       ${metricCard("Сделок в пайплайне", n)}
       ${metricCard("Общий пайплайн", formatMoney(m.totalPipeline), "сумма ожидаемых сумм")}
-      ${metricCard("Взвешенный прогноз", formatMoney(m.weighted), "ожид. сумма при скоринге ≥ 50%")}
+      ${metricCard("Взвешенный прогноз", formatMoney(m.weighted), "тёплые + горячие (балл ≥ 60)")}
       ${metricCard("Подтв. бюджет", m.confirmedBudget, formatMoney(m.confirmedBudgetSum))}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
@@ -347,6 +377,19 @@ function renderPanel(m) {
       : window.ITMEN_API?.enabled
         ? "Данные на сервере · автосохранение при изменениях."
         : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
+
+  document.getElementById("dash-filter-owner")?.addEventListener("change", e => {
+    dashboardFilters.owner = e.target.value;
+    renderPanel(getDashboardMetrics());
+  });
+  document.getElementById("dash-filter-category")?.addEventListener("change", e => {
+    dashboardFilters.category = e.target.value;
+    renderPanel(getDashboardMetrics());
+  });
+  document.getElementById("dash-clear-filters")?.addEventListener("click", () => {
+    dashboardFilters = { owner: "", category: "" };
+    renderPanel(getDashboardMetrics());
+  });
 }
 
 function renderScoring() {
@@ -845,10 +888,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     a.addEventListener("click", e => { e.preventDefault(); navigate(a.dataset.page); });
   });
 
-  document.getElementById("btn-save")?.addEventListener("click", saveState);
-  document.getElementById("btn-reset")?.addEventListener("click", resetState);
-  document.getElementById("btn-export")?.addEventListener("click", exportJson);
-  document.getElementById("btn-import")?.addEventListener("change", e => importJson(e.target));
   document.getElementById("menu-toggle")?.addEventListener("click", () =>
     document.getElementById("sidebar").classList.toggle("open"));
   document.querySelectorAll(".modal-overlay").forEach(m => {

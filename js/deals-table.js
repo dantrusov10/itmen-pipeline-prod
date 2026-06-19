@@ -15,7 +15,7 @@ const DEALS_TABLE_COLS = [
   {
     key: "owner",
     label: "Владелец",
-    filter: "text",
+    filter: "select-dynamic",
     get: d => d.owner,
     render(d) {
       return `<td>${escapeHtml(d.owner)}</td>`;
@@ -109,7 +109,7 @@ function colSortValue(col, d) {
 function matchColFilter(col, d, filterVal) {
   const f = (filterVal || "").trim();
   if (!f) return true;
-  if (col.filter === "select") {
+  if (col.filter === "select" || col.filter === "select-dynamic") {
     const cell = dealCellText(col, d);
     if (f === "—") return !cell || cell === "—";
     return cell === f || (f === "Неполный" && d.quality === "Неполный" && !d.riskFlag);
@@ -161,10 +161,13 @@ function sortDealsTableRows(deals) {
   });
 }
 
-function renderColFilter(col) {
+function renderColFilter(col, deals) {
   const val = escapeHtml(dealsTableColFilters[col.key] || "");
-  if (col.filter === "select") {
-    const opts = (col.filterOptions || []).map(o =>
+  if (col.filter === "select" || col.filter === "select-dynamic") {
+    const options = col.filter === "select-dynamic"
+      ? [...new Set((deals || []).map(d => col.get(d)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"))
+      : (col.filterOptions || []);
+    const opts = options.map(o =>
       `<option value="${escapeHtml(o)}" ${dealsTableColFilters[col.key] === o ? "selected" : ""}>${escapeHtml(o)}</option>`
     ).join("");
     return `<select class="deals-col-filter" data-col="${col.key}"><option value="">Все</option>${opts}</select>`;
@@ -184,6 +187,19 @@ function renderDealsTableRow(d) {
   </tr>`;
 }
 
+function sortMarkHtml(key) {
+  const active = dealsTableSort.key === key;
+  const icon = active ? (dealsTableSort.dir === "asc" ? "▲" : "▼") : "⇅";
+  return `<span class="sort-mark${active ? " active" : ""}">${icon}</span>`;
+}
+
+function renderSortHeader(col) {
+  const active = dealsTableSort.key === col.key;
+  return `<th data-sort="${col.key}" class="sortable${active ? " sorted-" + dealsTableSort.dir : ""}" title="Сортировка: клик — по возрастанию/убыванию">
+    <span class="th-label">${escapeHtml(col.label)}</span>${sortMarkHtml(col.key)}
+  </th>`;
+}
+
 function updateDealsTableSortMarks() {
   document.querySelectorAll("#deals-table th[data-sort]").forEach(el => {
     const key = el.dataset.sort;
@@ -191,8 +207,7 @@ function updateDealsTableSortMarks() {
     const active = key === dealsTableSort.key;
     el.classList.toggle("sorted-asc", active && dealsTableSort.dir === "asc");
     el.classList.toggle("sorted-desc", active && dealsTableSort.dir === "desc");
-    const mark = active ? (dealsTableSort.dir === "asc" ? " ▲" : " ▼") : "";
-    el.innerHTML = escapeHtml(col?.label || key) + mark;
+    el.innerHTML = `<span class="th-label">${escapeHtml(col?.label || key)}</span>${sortMarkHtml(key)}`;
   });
 }
 
@@ -254,10 +269,6 @@ function renderDealsTable(deals) {
   const el = document.getElementById("page-deals");
   if (!el) return;
   dealsTableBound = false;
-  const sortMark = key => {
-    if (dealsTableSort.key !== key) return "";
-    return dealsTableSort.dir === "asc" ? " ▲" : " ▼";
-  };
   el.innerHTML = `
     <div class="deals-toolbar">
       <button class="btn btn-primary" onclick="openDealModal()">+ Добавить</button>
@@ -269,11 +280,9 @@ function renderDealsTable(deals) {
     <div class="deals-table-shell">
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
-          <tr>${DEALS_TABLE_COLS.map(c =>
-            `<th data-sort="${c.key}" class="sortable" title="Сортировка: клик — по возрастанию/убыванию">${escapeHtml(c.label)}${sortMark(c.key)}</th>`
-          ).join("")}<th class="col-actions"></th></tr>
+          <tr>${DEALS_TABLE_COLS.map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
           <tr class="deals-filter-row">${DEALS_TABLE_COLS.map(c =>
-            `<th>${renderColFilter(c)}</th>`
+            `<th>${renderColFilter(c, deals)}</th>`
           ).join("")}<th></th></tr>
         </thead>
         <tbody id="deals-tbody"></tbody>

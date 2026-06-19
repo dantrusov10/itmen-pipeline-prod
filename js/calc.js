@@ -324,6 +324,17 @@ function suggestScores(deal) {
   return { scores, reasons };
 }
 
+const WEIGHTED_SCORE_MIN = 60;
+
+function isWeightedDeal(score, category) {
+  if (category === "Горячая" || category === "Тёплая") return true;
+  return score != null && score >= WEIGHTED_SCORE_MIN;
+}
+
+function weightedAmount(expectedAmount, score, category) {
+  return isWeightedDeal(score, category) ? (expectedAmount || 0) : 0;
+}
+
 function enrichDeal(deal) {
   const d = migrateDeal(deal);
   const score = calcDealScore(d.scores);
@@ -335,7 +346,7 @@ function enrichDeal(deal) {
   const quality = calcDataQuality(d);
   const riskFlag = calcRiskFlag(d, category, daysSince, daysTo);
   const expectedAmount = Number(d.amount) || 0;
-  const weighted = score != null && score >= 50 ? expectedAmount : 0;
+  const weighted = weightedAmount(expectedAmount, score, category);
   return {
     ...d, score, computedProb, prob, category, daysSince, daysTo, quality, riskFlag, weighted,
     expectedAmount,
@@ -407,7 +418,7 @@ function categoryBadge(cat) {
 function calcMetrics(deals) {
   const all = deals.map(enrichDeal);
   const totalPipeline = all.reduce((s, x) => s + (x.expectedAmount || 0), 0);
-  const weighted = all.filter(x => x.score != null && x.score >= 50).reduce((s, x) => s + (x.expectedAmount || 0), 0);
+  const weighted = all.filter(x => isWeightedDeal(x.score, x.category)).reduce((s, x) => s + (x.expectedAmount || 0), 0);
   const counts = { "Горячая": 0, "Тёплая": 0, "Наблюдение": 0, "Отказ": 0 };
   all.forEach(x => { if (x.category) counts[x.category] = (counts[x.category] || 0) + 1; });
   const scores = all.filter(x => x.score != null).map(x => x.score);
@@ -431,7 +442,7 @@ function calcMetrics(deals) {
     if (!byOwner[o]) byOwner[o] = { count: 0, pipeline: 0, weighted: 0, hot: 0, warm: 0, scores: [] };
     byOwner[o].count++;
     byOwner[o].pipeline += x.expectedAmount || 0;
-    byOwner[o].weighted += x.score != null && x.score >= 50 ? (x.expectedAmount || 0) : 0;
+    byOwner[o].weighted += isWeightedDeal(x.score, x.category) ? (x.expectedAmount || 0) : 0;
     if (x.category === "Горячая") byOwner[o].hot++;
     if (x.category === "Тёплая") byOwner[o].warm++;
     if (x.score != null) byOwner[o].scores.push(x.score);
