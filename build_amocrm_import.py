@@ -13,7 +13,7 @@ from pathlib import Path
 import openpyxl
 
 ROOT = Path(__file__).resolve().parent
-XLSX_DEFAULT = Path(r"c:\Users\Данила\Downloads\amocrm_export_leads_2026-06-19 (2).xlsx")
+XLSX_DEFAULT = Path(r"c:\Users\Данила\Downloads\amocrm_export_leads_2026-06-19 (3).xlsx")
 INITIAL_JS = ROOT / "js" / "initial-data.js"
 GAS_CONFIG = ROOT / "js" / "gas-config.js"
 
