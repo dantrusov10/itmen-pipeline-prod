@@ -462,6 +462,7 @@ textarea { min-height: 60px; resize: vertical; }
 }
 .deals-table-compact .col-customer { width: 14%; }
 .deals-table-compact .col-stage { width: 12%; }
+.deals-table-compact .col-deadline { width: 9%; }
 .deals-table-compact .col-amount { width: 11%; }
 .deals-table-compact .col-commit { width: 10%; }
 .deals-table-compact .col-date { width: 9%; }

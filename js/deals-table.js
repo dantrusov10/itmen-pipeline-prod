@@ -83,6 +83,16 @@ const DEALS_TABLE_COLS = [
     },
   },
   {
+    key: "budgetPeriod",
+    label: "Срок",
+    filter: "select",
+    filterOptions: () => (state?.lists?.budgetPeriods || window.ITMEN_CONFIG?.budgetPeriods || []),
+    get: d => d.budgetPeriod || "Не определён",
+    render(d) {
+      return `<td class="col-deadline"><small>${escapeHtml(d.budgetPeriod || "—")}</small></td>`;
+    },
+  },
+  {
     key: "commitStatus",
     label: "Статус коммита",
     filter: "select",
