@@ -83,19 +83,7 @@ body {
   gap: .4rem;
 }
 .sidebar-user .user-name { font-weight: 600; color: #fff; }
-.sidebar-user .actor-select {
-  width: 100%;
-  padding: .35rem .45rem;
-  border: 1px solid rgba(255,255,255,.25);
-  border-radius: 6px;
-  background: rgba(255,255,255,.1);
-  color: #fff;
-  font-size: .78rem;
-}
-.sidebar-user .actor-select option {
-  color: #1a1a2e;
-  background: #fff;
-}
+.sidebar-user .btn { align-self: flex-start; }
 
 .main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; width: calc(100% - var(--sidebar-w)); }
 

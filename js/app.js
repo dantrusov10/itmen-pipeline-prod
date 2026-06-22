@@ -1,6 +1,5 @@
 /* ITMen Q3 — пайплайн: дашборд, паспорт сделок, скоринг */
 const STORAGE_KEY = "itmen_pipeline_v2";
-const ACTOR_KEY = "itmen_actor";
 const PAGES = {
   panel: { title: "Дашборд пайплайна", icon: "📊" },
   deals: { title: "Паспорт сделок", icon: "📋" },
@@ -268,9 +267,6 @@ async function saveState() {
   if (saveInFlight) await saveInFlight;
   saveInFlight = (async () => {
     if (window.ITMEN_API?.enabled) {
-      if (window.ITMEN_API.backend === "gas" && !getActorName()) {
-        showToast("Укажите «Вы» в боковом меню — так попадёт в журнал аудита");
-      }
       try {
         const res = await apiSavePipeline(state);
         const auditNote = res?.auditRows ? ` · аудит: ${res.auditRows} строк` : "";
@@ -1000,25 +996,6 @@ async function importJson(input) {
   input.value = "";
 }
 
-function getActorName() {
-  return sessionStorage.getItem(ACTOR_KEY) || "";
-}
-
-function initActorSelect() {
-  const el = document.getElementById("actor-select");
-  if (!el) return;
-  const owners = getDashboardOwners();
-  el.innerHTML = `<option value="">— выберите —</option>${owners.map(o =>
-    `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`
-  ).join("")}`;
-  const saved = sessionStorage.getItem(ACTOR_KEY);
-  if (saved && owners.includes(saved)) el.value = saved;
-  el.onchange = () => {
-    if (el.value) sessionStorage.setItem(ACTOR_KEY, el.value);
-    else sessionStorage.removeItem(ACTOR_KEY);
-  };
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.ITMEN_API?.enabled) {
     try {
@@ -1049,7 +1026,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   bindDashboardEvents();
   if (typeof bindDealsTableEvents === "function") bindDealsTableEvents();
-  initActorSelect();
   renderAll();
   navigate(location.hash.replace("#", "") || "panel");
 });

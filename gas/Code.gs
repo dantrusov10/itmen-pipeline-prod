@@ -79,7 +79,7 @@ function doPost(e) {
       var savedBy = String(body.savedBy || '').trim();
       var diffRows = diffPipeline_(oldState, body.state);
       var auditWritten = appendAudit_(savedBy, diffRows);
-      var updatedAt = saveState_(body.state, savedBy);
+      var updatedAt = saveState_(body.state);
       return json_({ ok: true, updatedAt: updatedAt, auditRows: auditWritten });
     }
     return json_({ error: 'Unknown action' });
@@ -129,11 +129,11 @@ function loadState_() {
   return JSON.parse(jsonStr);
 }
 
-function saveState_(state, savedBy) {
+function saveState_(state) {
   var sh = getStateSheet_();
   var payload = JSON.parse(JSON.stringify(state));
   payload._savedAt = new Date().toISOString();
-  payload._savedBy = savedBy || 'web';
+  payload._savedBy = 'web';
   var jsonStr = JSON.stringify(payload);
   var chunks = [];
   for (var i = 0; i < jsonStr.length; i += CHUNK_SIZE) {
@@ -288,9 +288,10 @@ function appendAudit_(savedBy, diffRows) {
   var atStr = Utilities.formatDate(at, tz, 'yyyy-MM-dd HH:mm:ss');
   var startRow = sh.getLastRow() + 1;
   var data = diffRows.map(function (r) {
+    var actor = r.owner || savedBy || '';
     return [
       atStr,
-      savedBy || '',
+      actor,
       r.dealId || '',
       r.customer || '',
       r.owner || '',
