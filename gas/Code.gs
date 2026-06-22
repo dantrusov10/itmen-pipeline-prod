@@ -310,7 +310,7 @@ function appendAudit_(savedBy, diffRows) {
       truncate_(r.new)
     ];
   });
-  sh.getRange(startRow, 1, startRow + data.length - 1, 9).setValues(data);
+  sh.getRange(startRow, 1, data.length, 9).setValues(data);
   return data.length;
 }
 
