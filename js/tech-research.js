@@ -1,8 +1,11 @@
 /* Техническое исследование — 5 блоков */
 
+const OTHER_SEGMENT_ID = "other";
+
 function defaultTechResearch() {
   return {
     seekingSegments: [],
+    seekingOtherLabel: "",
     asIsStack: {},
     changePains: {},
     competitorEntries: {},
@@ -12,7 +15,16 @@ function defaultTechResearch() {
   };
 }
 
-function getSegmentDef(segId) {
+function getOtherSegmentLabel(tr) {
+  const fromDom = document.getElementById("seek-other-label")?.value?.trim();
+  if (fromDom) return fromDom;
+  return tr?.seekingOtherLabel?.trim() || "Другое";
+}
+
+function getSegmentDef(segId, tr) {
+  if (segId === OTHER_SEGMENT_ID) {
+    return { id: OTHER_SEGMENT_ID, label: getOtherSegmentLabel(tr), className: null };
+  }
   return (window.ITMEN_CONFIG?.techSegments || []).find(s => s.id === segId);
 }
 
@@ -114,6 +126,7 @@ function migrateTechResearch(tr) {
     tr = { ...defaultTechResearch(), ...tr, classEntries: tr.classEntries };
   }
   if (!tr.seekingSegments) tr.seekingSegments = [];
+  if (tr.seekingOtherLabel == null) tr.seekingOtherLabel = "";
   if (!tr.asIsStack) tr.asIsStack = {};
   if (!tr.changePains) tr.changePains = {};
   if (!tr.competitorEntries) tr.competitorEntries = {};
@@ -191,17 +204,34 @@ function renderCompetitorRow(segId, idx, entry) {
   </div>`;
 }
 
-function renderSegmentCompetitorBlock(segId, entries) {
-  const seg = getSegmentDef(segId);
+function renderSegmentCompetitorBlock(segId, entries, tr) {
+  const seg = getSegmentDef(segId, tr);
+  const label = segId === OTHER_SEGMENT_ID ? getOtherSegmentLabel(tr) : (seg?.label || segId);
   const list = entries?.length ? entries : [];
   const rows = list.length
     ? list.map((e, i) => renderCompetitorRow(segId, i, e)).join("")
     : `<div class="muted comp-empty">Нет записей — добавьте вендора из short-list клиента</div>`;
   return `<div class="comp-seg-block" data-seg="${segId}">
-    <div class="seg-row-title">${escapeHtml(seg?.label || segId)}</div>
+    <div class="seg-row-title">${escapeHtml(label)}</div>
     <div class="comp-rows">${rows}</div>
     <button type="button" class="btn btn-sm" onclick="addCompetitorRow('${segId}')">+ Добавить вендора</button>
   </div>`;
+}
+
+function updateOtherSegmentTitles() {
+  const label = getOtherSegmentLabel();
+  document.querySelectorAll(`.seg-pain-row[data-seg="${OTHER_SEGMENT_ID}"] label`).forEach(el => {
+    el.textContent = `Боли / почему меняют — ${label}`;
+  });
+  document.querySelectorAll(`.comp-seg-block[data-seg="${OTHER_SEGMENT_ID}"] > .seg-row-title`).forEach(el => {
+    el.textContent = label;
+  });
+}
+
+function syncSeekOtherWrap() {
+  const wrap = document.getElementById("seek-other-wrap");
+  const cb = document.querySelector(`.seg-seek-cb[value="${OTHER_SEGMENT_ID}"]`);
+  if (wrap) wrap.style.display = cb?.checked ? "block" : "none";
 }
 
 function toggleCompReasonFields(sel) {
@@ -260,20 +290,23 @@ function renderVendorPicker(segId, data, opts) {
   </div>`;
 }
 
-function renderSegmentAsIsRow(segId, data) {
+function renderSegmentAsIsRow(segId, data, tr) {
   data = data || {};
-  const seg = getSegmentDef(segId);
+  const seg = getSegmentDef(segId, tr);
   return `<div class="seg-row" data-seg="${segId}">
-    <div class="seg-row-title">${escapeHtml(seg?.label || segId)}</div>
+    <div class="seg-row-title">${segId === OTHER_SEGMENT_ID
+      ? `Другое: <input type="text" class="seg-other-label" id="seek-other-label" placeholder="Укажите, что ищут" value="${escapeHtml(tr?.seekingOtherLabel || "")}" oninput="updateOtherSegmentTitles()">`
+      : escapeHtml(seg?.label || segId)}</div>
     ${renderVendorPicker(segId, data)}
     <div style="margin-top:.35rem"><input class="seg-comment" placeholder="Как работает сейчас (кратко)" value="${escapeHtml(data.comment || "")}"></div>
   </div>`;
 }
 
-function renderSegmentPainRow(segId, text) {
-  const seg = getSegmentDef(segId);
+function renderSegmentPainRow(segId, text, tr) {
+  const seg = getSegmentDef(segId, tr);
+  const label = segId === OTHER_SEGMENT_ID ? getOtherSegmentLabel(tr) : (seg?.label || segId);
   return `<div class="seg-pain-row" data-seg="${segId}">
-    <label>Боли / почему меняют — ${escapeHtml(seg?.label || segId)}</label>
+    <label>Боли / почему меняют — ${escapeHtml(label)}</label>
     <textarea class="seg-pain" placeholder="Что не устраивает, триггер смены">${escapeHtml(text || "")}</textarea>
   </div>`;
 }
@@ -296,19 +329,23 @@ function renderTechSection(tr) {
 
   const block1 = segments.map(s =>
     `<label class="checkbox-label"><input type="checkbox" class="seg-seek-cb" value="${s.id}" ${selected.has(s.id) ? "checked" : ""} onchange="syncTechSegmentPanels()"> ${escapeHtml(s.label)}</label>`
-  ).join("");
+  ).join("") + `
+    <label class="checkbox-label"><input type="checkbox" class="seg-seek-cb" value="${OTHER_SEGMENT_ID}" ${selected.has(OTHER_SEGMENT_ID) ? "checked" : ""} onchange="syncTechSegmentPanels()"> Другое</label>
+    <div id="seek-other-wrap" class="seek-other-wrap" style="display:${selected.has(OTHER_SEGMENT_ID) ? "block" : "none"}">
+      <input type="text" id="seek-other-label-top" class="seek-other-label-top" placeholder="Укажите, что ищут" value="${escapeHtml(tr.seekingOtherLabel || "")}" oninput="syncSeekOtherLabelToPanels()">
+    </div>`;
 
   const activeSegs = tr.seekingSegments?.length ? tr.seekingSegments : [];
   const block2 = activeSegs.length
-    ? activeSegs.map(id => renderSegmentAsIsRow(id, tr.asIsStack?.[id])).join("")
+    ? activeSegs.map(id => renderSegmentAsIsRow(id, tr.asIsStack?.[id], tr)).join("")
     : `<div class="muted" id="asis-placeholder">Сначала выберите сегменты в блоке 1</div>`;
 
   const block3 = activeSegs.length
-    ? activeSegs.map(id => renderSegmentPainRow(id, tr.changePains?.[id])).join("")
+    ? activeSegs.map(id => renderSegmentPainRow(id, tr.changePains?.[id], tr)).join("")
     : `<div class="muted" id="pain-placeholder">Появится после выбора сегментов</div>`;
 
   const block4 = activeSegs.length
-    ? activeSegs.map(id => renderSegmentCompetitorBlock(id, tr.competitorEntries?.[id])).join("")
+    ? activeSegs.map(id => renderSegmentCompetitorBlock(id, tr.competitorEntries?.[id], tr)).join("")
     : `<div class="muted" id="comp-placeholder">Появится после выбора сегментов</div>`;
 
   return `
@@ -350,8 +387,16 @@ function renderTechSection(tr) {
     </div>`;
 }
 
+function syncSeekOtherLabelToPanels() {
+  const top = document.getElementById("seek-other-label-top");
+  const panel = document.getElementById("seek-other-label");
+  if (top && panel) panel.value = top.value;
+  updateOtherSegmentTitles();
+}
+
 function syncTechSegmentPanels() {
   const segs = [...document.querySelectorAll(".seg-seek-cb:checked")].map(x => x.value);
+  syncSeekOtherWrap();
   const asis = document.getElementById("asis-panel");
   const pain = document.getElementById("pain-panel");
   const comp = document.getElementById("comp-panel");
@@ -363,9 +408,11 @@ function syncTechSegmentPanels() {
     return;
   }
   const prev = collectTechResearch();
-  asis.innerHTML = segs.map(id => renderSegmentAsIsRow(id, prev.asIsStack[id])).join("");
-  pain.innerHTML = segs.map(id => renderSegmentPainRow(id, prev.changePains[id])).join("");
-  if (comp) comp.innerHTML = segs.map(id => renderSegmentCompetitorBlock(id, prev.competitorEntries[id])).join("");
+  const trCtx = { seekingOtherLabel: prev.seekingOtherLabel };
+  asis.innerHTML = segs.map(id => renderSegmentAsIsRow(id, prev.asIsStack[id], trCtx)).join("");
+  pain.innerHTML = segs.map(id => renderSegmentPainRow(id, prev.changePains[id], trCtx)).join("");
+  if (comp) comp.innerHTML = segs.map(id => renderSegmentCompetitorBlock(id, prev.competitorEntries[id], trCtx)).join("");
+  syncSeekOtherLabelToPanels();
 }
 
 function renderVendorDropdownOptions(results) {
@@ -454,6 +501,14 @@ function removeTaskRow(btn) {
 function collectTechResearch() {
   const tr = defaultTechResearch();
   tr.seekingSegments = [...document.querySelectorAll(".seg-seek-cb:checked")].map(x => x.value);
+  tr.seekingOtherLabel = (
+    document.getElementById("seek-other-label")?.value ||
+    document.getElementById("seek-other-label-top")?.value ||
+    ""
+  ).trim();
+  if (tr.seekingSegments.includes(OTHER_SEGMENT_ID) && !tr.seekingOtherLabel) {
+    tr.seekingOtherLabel = "";
+  }
   tr.projectTasks = [...document.querySelectorAll(".proj-task-input")]
     .map(x => x.value.trim()).filter(Boolean);
   const prod = document.getElementById("f-productReqPct")?.value;

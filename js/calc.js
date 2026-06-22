@@ -64,6 +64,20 @@ function normalizeCommitStatus(v) {
   return byLabel ? byLabel.id : "none";
 }
 
+function normalizeRiskTypes(deal) {
+  if (Array.isArray(deal?.riskTypes)) {
+    return deal.riskTypes.filter(r => r && r !== "none");
+  }
+  if (deal?.riskType && deal.riskType !== "none") return [deal.riskType];
+  return [];
+}
+
+function riskLabels(types) {
+  const list = normalizeRiskTypes({ riskTypes: types, riskType: types?.[0] });
+  if (!list.length) return [];
+  return list.map(id => riskLabel(id)).filter(Boolean);
+}
+
 function migrateDeal(deal) {
   const d = { ...deal };
   if (d.deadline && !d.taskDue) d.taskDue = d.deadline;
@@ -72,8 +86,10 @@ function migrateDeal(deal) {
   if (d.nextStep && !d.nextStepComment) d.nextStepComment = d.nextStep;
   if (d.risk && !d.riskComment) d.riskComment = d.risk;
   if (!d.nextStepType) d.nextStepType = "discovery";
-  if (!d.riskType) d.riskType = "none";
+  d.riskTypes = normalizeRiskTypes(d);
   if (d.riskType === "stale") d.riskType = "none";
+  if (!d.riskType) d.riskType = d.riskTypes[0] || "none";
+  else if (d.riskTypes.length && !d.riskTypes.includes(d.riskType)) d.riskType = d.riskTypes[0];
   if (!d.scoreReasons) d.scoreReasons = {};
   if (!d.scoreHistory) d.scoreHistory = [];
   if (!d.scoresOverridden) d.scoresOverridden = {};
@@ -192,9 +208,8 @@ function calcRiskFlag(deal, category, daysSinceUpdate, daysToTask) {
   if (!deal.id) return "";
   if (category === "Горячая" && deal.budgetStatus === "Нет бюджета") return "Горячая без бюджета";
   if (daysToTask != null && daysToTask < 0) return "Просрочена ближайшая задача";
-  if (deal.riskType && deal.riskType !== "none") {
-    return riskLabel(deal.riskType);
-  }
+  const risks = normalizeRiskTypes(deal);
+  if (risks.length) return riskLabels(risks).join("; ");
   return "";
 }
 
@@ -313,11 +328,14 @@ function suggestScores(deal) {
     reasons.commercial = "Бюджет подтверждён — клиент ближе к закупке.";
   }
 
-  if (deal.riskType === "no_budget") scores.budget = Math.min(scores.budget, 1);
-  if (deal.riskType === "no_lpr") scores.access = Math.min(scores.access, 1);
-  if (deal.riskType === "competitor") scores.competitive = Math.min(scores.competitive, 1);
-  if (deal.riskType === "timing") scores.timing = Math.min(scores.timing, 2);
-  if (deal.riskType === "technical") scores.technical = 1;
+  const risks = normalizeRiskTypes(deal);
+  risks.forEach(rt => {
+    if (rt === "no_budget") scores.budget = Math.min(scores.budget, 1);
+    if (rt === "no_lpr") scores.access = Math.min(scores.access, 1);
+    if (rt === "competitor") scores.competitive = Math.min(scores.competitive, 1);
+    if (rt === "timing") scores.timing = Math.min(scores.timing, 2);
+    if (rt === "technical") scores.technical = 1;
+  });
 
   if (!reasons.technical) reasons.technical = "Оценка по умолчанию — уточните при необходимости";
 
@@ -367,6 +385,7 @@ function clearDealExtendedFields(deal) {
   d.budgetPlannedYear = null;
   d.commitStatus = "none";
   d.pains = "";
+  d.riskTypes = [];
   d.riskType = "none";
   d.riskComment = "";
   d.techResearch = typeof defaultTechResearch === "function" ? defaultTechResearch() : {
@@ -489,7 +508,9 @@ function calcMetrics(deals) {
   const segmentLabels = Object.fromEntries((window.ITMEN_CONFIG?.techSegments || []).map(s => [s.id, s.label]));
   const seekingCounts = {};
   all.forEach(x => (x.techResearch?.seekingSegments || []).forEach(seg => {
-    const label = segmentLabels[seg] || seg;
+    const label = seg === "other"
+      ? (x.techResearch?.seekingOtherLabel?.trim() || "Другое")
+      : (segmentLabels[seg] || seg);
     seekingCounts[label] = (seekingCounts[label] || 0) + 1;
   }));
   const topSegments = Object.entries(seekingCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);

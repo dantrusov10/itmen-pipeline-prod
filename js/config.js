@@ -164,7 +164,6 @@ window.ITMEN_CONFIG = {
   ],
 
   riskTypes: [
-    { id: "none", label: "Критических рисков нет" },
     { id: "no_budget", label: "Нет подтверждённого бюджета" },
     { id: "no_lpr", label: "Нет доступа к ЛПР" },
     { id: "competitor", label: "Сильный конкурент" },

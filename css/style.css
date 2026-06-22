@@ -745,6 +745,30 @@ body.page-deals-active .deals-table-hint {
   height: .85rem;
   accent-color: #2563eb;
 }
+#seek-segments.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .85rem;
+}
+.seek-other-wrap {
+  flex-basis: 100%;
+  margin: .15rem 0 .35rem 1.4rem;
+}
+.seek-other-label-top,
+.seg-other-label {
+  width: 100%;
+  max-width: 24rem;
+  box-sizing: border-box;
+  font-size: .8125rem;
+  padding: .35rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.risk-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: .35rem .75rem;
+}
 .deals-ms-opt span {
   flex: 1;
   min-width: 0;

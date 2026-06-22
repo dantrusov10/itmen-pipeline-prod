@@ -598,10 +598,15 @@ function typeSelect(id, types, value) {
   </select>`;
 }
 
-function checkboxGroup(containerId, options, selected, inputClass) {
+function collectRiskTypesFromForm() {
+  return [...document.querySelectorAll(".risk-type-cb:checked")].map(x => x.value);
+}
+
+function renderRiskCheckboxes(selected) {
   const set = new Set(selected || []);
-  return `<div class="checkbox-group" id="${containerId}">${options.map(o =>
-    `<label class="checkbox-label"><input type="checkbox" class="${inputClass}" value="${o.id}" ${set.has(o.id) ? "checked" : ""}> ${escapeHtml(o.label)}</label>`
+  const types = window.ITMEN_CONFIG?.riskTypes || [];
+  return `<div class="checkbox-group risk-checkbox-group" id="risk-types-group">${types.map(t =>
+    `<label class="checkbox-label"><input type="checkbox" class="risk-type-cb" value="${t.id}" ${set.has(t.id) ? "checked" : ""}> ${escapeHtml(t.label)}</label>`
   ).join("")}</div>`;
 }
 
@@ -628,7 +633,8 @@ function collectDealDraft() {
     amount: +val("f-amount") || 0,
     expectedBudget: +val("f-expectedBudget") || 0,
     pains: val("f-pains"),
-    riskType: val("f-riskType"),
+    riskTypes: collectRiskTypesFromForm(),
+    riskType: collectRiskTypesFromForm()[0] || "none",
   };
 }
 
@@ -756,8 +762,9 @@ async function openDealModalAsync(idx) {
       <div class="form-section-title">Риски</div>
       <div class="form-grid">
         <div class="full">
-          <label>Критический риск</label>
-          ${typeSelect("f-riskType", window.ITMEN_CONFIG?.riskTypes || [], d.riskType)}
+          <label>Критические риски</label>
+          <p class="muted" style="font-size:.75rem;margin-bottom:.35rem">Можно выбрать несколько</p>
+          ${renderRiskCheckboxes(migrateDeal(d).riskTypes)}
         </div>
         <div class="full">
           <label>Комментарий к риску</label>
@@ -833,6 +840,7 @@ function emptyDeal() {
     scoreReasons: {},
     scoreHistory: [],
     scoresOverridden: {},
+    riskTypes: [],
     riskType: "none",
     riskComment: "",
     commitStatus: "none",
@@ -879,7 +887,7 @@ function saveDealModal() {
 async function saveDealModalAsync() {
   const prev = editingDealIdx != null ? state.deals[editingDealIdx] : null;
   const scoreData = collectScoresFromForm(prev);
-  const riskType = val("f-riskType");
+  const riskTypes = collectRiskTypesFromForm();
 
   const deal = {
     id: val("f-id"),
@@ -901,7 +909,8 @@ async function saveDealModalAsync() {
     budgetPlannedYear: val("f-budgetStatus") === "Планируется согласование" ? (+val("f-budgetPlannedYear") || null) : null,
     commitStatus: val("f-commitStatus"),
     pains: val("f-pains"),
-    riskType,
+    riskTypes,
+    riskType: riskTypes[0] || "none",
     riskComment: val("f-riskComment"),
     techResearch: collectTechResearch(),
     lastUpdate: new Date().toISOString().slice(0, 10),
@@ -920,8 +929,13 @@ async function saveDealModalAsync() {
     alert("Укажите клиента");
     return;
   }
-  if (riskType === "other" && !deal.riskComment.trim()) {
+  if (riskTypes.includes("other") && !deal.riskComment.trim()) {
     alert("Для риска «Другое» нужен комментарий");
+    return;
+  }
+  const tr = deal.techResearch;
+  if (tr?.seekingSegments?.includes("other") && !tr.seekingOtherLabel?.trim()) {
+    alert("Укажите, что ищут в поле «Другое»");
     return;
   }
 
