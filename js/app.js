@@ -269,7 +269,8 @@ async function saveState() {
     if (window.ITMEN_API?.enabled) {
       try {
         const res = await apiSavePipeline(state);
-        const auditNote = res?.auditRows ? ` · аудит: ${res.auditRows} строк` : "";
+        const n = res?.auditRows ?? 0;
+        const auditNote = n > 0 ? ` · аудит: ${n} строк` : " · аудит: 0 изменений";
         showToast(typeof apiBackendLabel === "function"
           ? `Сохранено (${apiBackendLabel()})${auditNote}`
           : `Сохранено на сервере${auditNote}`);

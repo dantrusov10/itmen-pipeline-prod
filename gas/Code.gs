@@ -60,8 +60,28 @@ function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || 'get';
   try {
     if (action === 'health') {
-      getAuditSheet_();
-      return json_({ ok: true, ts: new Date().toISOString(), auditSheet: AUDIT_SHEET });
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var auditSh = getAuditSheet_();
+      var auditCount = Math.max(0, auditSh.getLastRow() - 1);
+      return json_({
+        ok: true,
+        ts: new Date().toISOString(),
+        auditSheet: AUDIT_SHEET,
+        auditRows: auditCount,
+        spreadsheetId: ss.getId(),
+        spreadsheetName: ss.getName()
+      });
+    }
+    if (action === 'audit') {
+      var limit = Math.min(Math.max(+(e.parameter.limit || 10), 1), 100);
+      var auditSh = getAuditSheet_();
+      var lastRow = auditSh.getLastRow();
+      if (lastRow < 2) return json_({ rows: [] });
+      var startRow = Math.max(2, lastRow - limit + 1);
+      var numRows = lastRow - startRow + 1;
+      return json_({
+        rows: auditSh.getRange(startRow, 1, numRows, 9).getValues()
+      });
     }
     if (action === 'init' || action === 'setup') {
       getStateSheet_();
