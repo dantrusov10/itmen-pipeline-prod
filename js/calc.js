@@ -104,6 +104,7 @@ function migrateDeal(deal) {
   if (!d.partner) d.partner = "Нет партнёра";
   if (d.partnerDiscount == null) d.partnerDiscount = 0;
   if (d.clientDiscount == null) d.clientDiscount = 0;
+  if (!d.updatedAt && d.lastUpdate) d.updatedAt = `${d.lastUpdate}T12:00:00.000Z`;
   delete d.deadline;
   delete d.revenuePeriod;
   delete d.evidenceLink;

@@ -238,6 +238,7 @@ function migrateState(s) {
     const m = migrateDeal(d);
     if (m.budgetStatus === "Запланирован") m.budgetStatus = "Планируется согласование";
     if (m.techResearch) m.techResearch = typeof migrateTechResearch === "function" ? migrateTechResearch(m.techResearch) : m.techResearch;
+    if (!m.updatedAt) m.updatedAt = s._savedAt || `${m.lastUpdate || "1970-01-01"}T12:00:00.000Z`;
     return m;
   });
   const init = window.ITMEN_INITIAL || {};
@@ -263,14 +264,24 @@ function migrateState(s) {
   return s;
 }
 
-async function saveState() {
+async function saveState(meta = {}) {
   if (saveInFlight) await saveInFlight;
   saveInFlight = (async () => {
     if (window.ITMEN_API?.enabled) {
       try {
-        const res = await apiSavePipeline(state);
+        const res = await apiSavePipeline(state, {
+          editedDealIds: meta.editedDealIds || [],
+          deletedDealIds: meta.deletedDealIds || [],
+          baseSavedAt: state._savedAt || null,
+          forceFull: !!meta.forceFull,
+        });
+        if (res.state) state = migrateState(res.state);
+        else if (res.updatedAt) state._savedAt = res.updatedAt;
         const n = res?.auditRows ?? 0;
-        const auditNote = n > 0 ? ` · аудит: ${n} строк` : " · аудит: 0 изменений";
+        let auditNote = n > 0 ? ` · аудит: ${n} строк` : " · аудит: 0 изменений";
+        if (res.conflicts?.length) {
+          auditNote += ` · на сервере новее: ${res.conflicts.join(", ")}`;
+        }
         showToast(typeof apiBackendLabel === "function"
           ? `Сохранено (${apiBackendLabel()})${auditNote}`
           : `Сохранено на сервере${auditNote}`);
@@ -293,7 +304,7 @@ async function saveState() {
 async function resetState() {
   if (!confirm("Сбросить все данные к начальным?")) return;
   state = migrateState(structuredClone(window.ITMEN_INITIAL));
-  await saveState();
+  await saveState({ forceFull: true });
   renderAll();
   showToast("Данные сброшены");
 }
@@ -915,6 +926,7 @@ async function saveDealModalAsync() {
     riskType: riskTypes[0] || "none",
     riskComment: val("f-riskComment"),
     techResearch: collectTechResearch(),
+    updatedAt: new Date().toISOString(),
     lastUpdate: new Date().toISOString().slice(0, 10),
     ...scoreData,
     budgetAmount: +val("f-expectedBudget") || 0,
@@ -948,7 +960,7 @@ async function saveDealModalAsync() {
   }
 
   closeModal("deal-modal");
-  await saveState();
+  await saveState({ editedDealIds: [deal.id] });
   renderAll();
 }
 
@@ -958,9 +970,10 @@ function deleteDeal(idx) {
 
 async function deleteDealAsync(idx) {
   if (!confirm("Удалить сделку " + state.deals[idx].id + "?")) return;
+  const deletedId = state.deals[idx].id;
   state.deals.splice(idx, 1);
   invalidateMetricsCache();
-  await saveState();
+  await saveState({ deletedDealIds: [deletedId] });
   renderAll();
 }
 
@@ -988,7 +1001,7 @@ async function importJson(input) {
   reader.onload = async e => {
     try {
       state = migrateState(JSON.parse(e.target.result));
-      await saveState();
+      await saveState({ forceFull: true });
       renderAll();
       showToast("Данные импортированы");
     } catch (_) { alert("Ошибка чтения JSON"); }

@@ -99,6 +99,9 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
+    if (body.action === 'recoverFromAudit') {
+      return json_(recoverFromAudit_(!!body.apply));
+    }
     if (body.action === 'save') {
       if (!body.state || !Array.isArray(body.state.deals)) {
         return json_({ error: 'Некорректное тело запроса' });
@@ -106,10 +109,29 @@ function doPost(e) {
       var oldState = loadState_();
       getAuditSheet_();
       var savedBy = String(body.savedBy || '').trim();
-      var diffRows = diffPipeline_(oldState, body.state);
+      var editedDealIds = body.editedDealIds || [];
+      var deletedDealIds = body.deletedDealIds || [];
+      var mergeResult;
+      var mergedState;
+      if (body.forceFull) {
+        mergedState = body.state;
+        mergeResult = { conflicts: [], keptServer: 0, tookClient: 0 };
+      } else {
+        mergeResult = mergePipelineStates_(oldState, body.state, editedDealIds, deletedDealIds);
+        mergedState = mergeResult.state;
+      }
+      var diffRows = diffPipeline_(oldState, mergedState);
       var auditWritten = appendAudit_(savedBy, diffRows);
-      var updatedAt = saveState_(body.state);
-      return json_({ ok: true, updatedAt: updatedAt, auditRows: auditWritten });
+      var updatedAt = saveState_(mergedState);
+      return json_({
+        ok: true,
+        updatedAt: updatedAt,
+        auditRows: auditWritten,
+        state: loadState_(),
+        conflicts: mergeResult.conflicts || [],
+        mergeKeptServer: mergeResult.keptServer || 0,
+        mergeTookClient: mergeResult.tookClient || 0
+      });
     }
     return json_({ error: 'Unknown action' });
   } catch (err) {
@@ -332,6 +354,225 @@ function appendAudit_(savedBy, diffRows) {
   });
   sh.getRange(startRow, 1, data.length, 9).setValues(data);
   return data.length;
+}
+
+var LABEL_TO_KEY_ = {};
+(function () {
+  var k;
+  for (k in FIELD_LABELS) {
+    if (FIELD_LABELS.hasOwnProperty(k)) LABEL_TO_KEY_[FIELD_LABELS[k]] = k;
+  }
+})();
+
+var TECH_AUDIT_KEYS_ = {
+  seekingSegments: true, seekingOtherLabel: true, productRequirementsPct: true,
+  pilotRequirementsPct: true, asIsStack: true, changePains: true,
+  competitorEntries: true, projectTasks: true
+};
+
+function dealRevision_(deal) {
+  if (!deal) return 0;
+  if (deal.updatedAt) {
+    var t = Date.parse(deal.updatedAt);
+    if (!isNaN(t)) return t;
+  }
+  if (deal.lastUpdate) {
+    var d = Date.parse(String(deal.lastUpdate) + 'T12:00:00.000Z');
+    if (!isNaN(d)) return d;
+  }
+  return 0;
+}
+
+function cloneDeal_(deal) {
+  return JSON.parse(JSON.stringify(deal));
+}
+
+function pickDealRevision_(serverDeal, clientDeal, editedDealIds, dealId) {
+  var conflict = false;
+  if (!serverDeal) return { deal: cloneDeal_(clientDeal), source: 'client', conflict: false };
+  if (!clientDeal) return { deal: cloneDeal_(serverDeal), source: 'server', conflict: false };
+
+  var serverRev = dealRevision_(serverDeal);
+  var clientRev = dealRevision_(clientDeal);
+  var edited = editedDealIds.indexOf(dealId) >= 0;
+
+  if (edited && clientRev >= serverRev) {
+    return { deal: cloneDeal_(clientDeal), source: 'client', conflict: false };
+  }
+  if (edited && clientRev < serverRev) {
+    return { deal: cloneDeal_(serverDeal), source: 'server', conflict: true };
+  }
+  if (clientRev > serverRev) {
+    return { deal: cloneDeal_(clientDeal), source: 'client', conflict: false };
+  }
+  return { deal: cloneDeal_(serverDeal), source: 'server', conflict: false };
+}
+
+function mergePipelineStates_(serverState, clientState, editedDealIds, deletedDealIds) {
+  serverState = serverState || { deals: [] };
+  clientState = clientState || { deals: [] };
+  editedDealIds = editedDealIds || [];
+  deletedDealIds = deletedDealIds || [];
+
+  var serverMap = {};
+  var clientMap = {};
+  (serverState.deals || []).forEach(function (d) {
+    if (d && d.id) serverMap[d.id] = d;
+  });
+  (clientState.deals || []).forEach(function (d) {
+    if (d && d.id) clientMap[d.id] = d;
+  });
+
+  var deletedSet = {};
+  deletedDealIds.forEach(function (id) { deletedSet[id] = true; });
+
+  var conflicts = [];
+  var keptServer = 0;
+  var tookClient = 0;
+  var mergedMap = {};
+  var allIds = {};
+
+  Object.keys(serverMap).forEach(function (id) { allIds[id] = true; });
+  Object.keys(clientMap).forEach(function (id) { allIds[id] = true; });
+
+  Object.keys(allIds).forEach(function (id) {
+    if (deletedSet[id]) return;
+    if (!clientMap[id] && serverMap[id]) {
+      mergedMap[id] = cloneDeal_(serverMap[id]);
+      keptServer++;
+      return;
+    }
+    if (clientMap[id] && !serverMap[id]) {
+      mergedMap[id] = cloneDeal_(clientMap[id]);
+      tookClient++;
+      return;
+    }
+    var picked = pickDealRevision_(serverMap[id], clientMap[id], editedDealIds, id);
+    mergedMap[id] = picked.deal;
+    if (picked.conflict) conflicts.push(id);
+    if (picked.source === 'server') keptServer++;
+    else tookClient++;
+  });
+
+  var order = (clientState.deals || []).map(function (d) { return d.id; }).filter(Boolean);
+  (serverState.deals || []).forEach(function (d) {
+    if (d.id && order.indexOf(d.id) < 0 && !deletedSet[d.id]) order.push(d.id);
+  });
+
+  var mergedDeals = order.map(function (id) { return mergedMap[id]; }).filter(Boolean);
+  var merged = JSON.parse(JSON.stringify(clientState));
+  merged.deals = mergedDeals;
+
+  var serverSaved = Date.parse(serverState._savedAt || '') || 0;
+  var clientSaved = Date.parse(clientState._savedAt || '') || 0;
+  if (serverSaved > clientSaved) {
+    if (serverState.lists) merged.lists = serverState.lists;
+    if (serverState.nextId) merged.nextId = serverState.nextId;
+  }
+
+  return { state: merged, conflicts: conflicts, keptServer: keptServer, tookClient: tookClient };
+}
+
+function readAllAuditRows_() {
+  var sh = getAuditSheet_();
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  var numRows = lastRow - 1;
+  return sh.getRange(2, 1, numRows, 9).getValues();
+}
+
+function parseAuditValueToField_(key, raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  var s = String(raw);
+  if (key === 'scores' || key === 'asIsStack' || key === 'changePains' || key === 'competitorEntries') {
+    try { return JSON.parse(s); } catch (e) { return null; }
+  }
+  if (key === 'riskTypes' || key === 'seekingSegments') {
+    return s.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+  if (key === 'projectTasks') {
+    return s.split(';').map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+  if (key === 'amount' || key === 'expectedBudget' || key === 'manualProb' ||
+      key === 'partnerDiscount' || key === 'clientDiscount' ||
+      key === 'budgetPlannedMonth' || key === 'budgetPlannedYear' ||
+      key === 'productRequirementsPct' || key === 'pilotRequirementsPct') {
+    var n = Number(s);
+    return isNaN(n) ? null : n;
+  }
+  if (key === 'taskDue' && s.indexOf('T') > 0) {
+    return s.slice(0, 10);
+  }
+  return s;
+}
+
+function applyAuditFieldToDeal_(deal, label, rawValue) {
+  var key = LABEL_TO_KEY_[label];
+  if (!key || rawValue === null || rawValue === undefined || rawValue === '') return false;
+  var val = parseAuditValueToField_(key, rawValue);
+  if (val === null && key !== 'pains' && key !== 'riskComment' && key !== 'taskDue') return false;
+
+  if (TECH_AUDIT_KEYS_[key]) {
+    if (!deal.techResearch) deal.techResearch = {};
+    deal.techResearch[key] = val;
+    return true;
+  }
+  if (key === 'riskTypes') {
+    deal.riskTypes = val || [];
+    deal.riskType = deal.riskTypes[0] || 'none';
+    return true;
+  }
+  deal[key] = val;
+  return true;
+}
+
+function recoverFromAudit_(apply) {
+  var rows = readAllAuditRows_();
+  var current = loadState_() || { deals: [] };
+  var dealMap = {};
+  current.deals.forEach(function (d) {
+    if (d && d.id) dealMap[d.id] = cloneDeal_(d);
+  });
+
+  var patches = 0;
+  rows.forEach(function (row) {
+    var dealId = String(row[2] || '');
+    var label = String(row[6] || '');
+    var newVal = row[8];
+    if (!dealId || !label || label === '—') return;
+    if (!dealMap[dealId]) {
+      dealMap[dealId] = { id: dealId, customer: String(row[3] || ''), owner: String(row[5] || '') };
+    }
+    if (applyAuditFieldToDeal_(dealMap[dealId], label, newVal)) patches++;
+  });
+
+  var recovered = JSON.parse(JSON.stringify(current));
+  recovered.deals = current.deals.map(function (d) {
+    return dealMap[d.id] ? dealMap[d.id] : d;
+  });
+
+  var diffRows = diffPipeline_(current, recovered);
+  if (apply) {
+    getAuditSheet_();
+    appendAudit_( 'recover', diffRows);
+    var updatedAt = saveState_(recovered);
+    return {
+      ok: true,
+      applied: true,
+      patches: patches,
+      auditRows: diffRows.length,
+      changes: diffRows.length,
+      updatedAt: updatedAt,
+      state: loadState_()
+    };
+  }
+  return {
+    ok: true,
+    applied: false,
+    patches: patches,
+    changes: diffRows.length,
+    preview: diffRows.slice(0, 30)
+  };
 }
 
 /** Запустите один раз из редактора Apps Script для инициализации */

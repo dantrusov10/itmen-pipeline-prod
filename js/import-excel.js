@@ -133,7 +133,7 @@ async function importExcelFromBuffer(buffer) {
   if (!confirm(`Импортировать ${imported} сделок? Существующие не удаляются.`)) return;
 
   state.deals.push(...newDeals);
-  await saveState();
+  await saveState({ forceFull: true });
   renderAll();
   showToast(`Импортировано ${imported} сделок`);
 }

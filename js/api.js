@@ -68,9 +68,16 @@ async function apiLoadPipeline() {
   return state;
 }
 
-async function apiSavePipeline(state) {
+async function apiSavePipeline(state, meta = {}) {
   if (window.ITMEN_API.backend === "gas") {
-    return gasFetch({ action: "save", state });
+    return gasFetch({
+      action: "save",
+      state,
+      editedDealIds: meta.editedDealIds || [],
+      deletedDealIds: meta.deletedDealIds || [],
+      baseSavedAt: meta.baseSavedAt || null,
+      forceFull: !!meta.forceFull,
+    });
   }
   return apiFetch("/api/pipeline", {
     method: "PUT",
