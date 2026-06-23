@@ -102,6 +102,9 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
+    if (body.action === 'recoverSelective') {
+      return json_(recoverSelective_(!!body.apply, body.approved || null));
+    }
     if (body.action === 'recoverFromAudit') {
       return json_(recoverFromAudit_(!!body.apply, body.mode || 'lost'));
     }
@@ -613,6 +616,137 @@ function buildLostRecoverPlan_(rows, dealMap) {
     }
   }
   return plan;
+}
+
+var SELECTIVE_EXCLUDE_DEALS_ = { 'D-026': true };
+var SELECTIVE_MIN_SCORE_SKIP_ = 20;
+
+function calcDisplayScore_(deal) {
+  var scores = (deal && deal.scores) ? deal.scores : {};
+  var weights = {
+    loyalty: 0.10, commit: 0.10, budget: 0.18, fit: 0.18, timing: 0.14,
+    competitive: 0.10, access: 0.08, technical: 0.06, commercial: 0.06
+  };
+  var hasPos = false;
+  var wsum = 0;
+  var k;
+  for (k in weights) {
+    if ((scores[k] || 0) > 0) hasPos = true;
+    wsum += (scores[k] || 0) * weights[k];
+  }
+  if (!hasPos) return 0;
+  return Math.round((wsum / 5) * 100);
+}
+
+function buildSelectiveRecoverPlan_(rows, dealMap) {
+  var timeline = {};
+  var i, row, dealId, label, k, vals, lastGood, j, deal, currentFmt;
+  for (i = 0; i < rows.length; i++) {
+    row = rows[i];
+    dealId = String(row[2] || '');
+    label = String(row[6] || '');
+    if (!dealId || !label || label === '—') continue;
+    k = dealId + '\t' + label;
+    if (!timeline[k]) timeline[k] = [];
+    timeline[k].push(row[8]);
+  }
+  var plan = [];
+  for (k in timeline) {
+    if (!timeline.hasOwnProperty(k)) continue;
+    vals = timeline[k];
+    dealId = k.split('\t')[0];
+    label = k.split('\t')[1];
+    if (SELECTIVE_EXCLUDE_DEALS_[dealId]) continue;
+    deal = dealMap[dealId];
+    if (!deal) continue;
+    if (calcDisplayScore_(deal) >= SELECTIVE_MIN_SCORE_SKIP_) continue;
+
+    lastGood = null;
+    for (j = 0; j < vals.length; j++) {
+      if (!isEmptyAuditField_(label, vals[j])) lastGood = vals[j];
+    }
+    if (!lastGood) continue;
+
+    currentFmt = formatDealFieldForAudit_(deal, label);
+    if (!isEmptyAuditField_(label, currentFmt)) continue;
+    if (currentFmt === String(lastGood)) continue;
+
+    plan.push({
+      key: dealId + '|' + label,
+      dealId: dealId,
+      customer: deal.customer || '',
+      owner: deal.owner || '',
+      label: label,
+      current: truncate_(currentFmt),
+      value: lastGood,
+      restore: truncate_(String(lastGood)),
+      reason: 'empty_field'
+    });
+  }
+  return plan;
+}
+
+function recoverSelective_(apply, approvedKeys) {
+  var rows = readAllAuditRows_();
+  var current = loadState_() || { deals: [] };
+  var dealMap = {};
+  current.deals.forEach(function (d) {
+    if (d && d.id) dealMap[d.id] = cloneDeal_(d);
+  });
+
+  var plan = buildSelectiveRecoverPlan_(rows, dealMap);
+  if (approvedKeys && approvedKeys.length) {
+    var allow = {};
+    approvedKeys.forEach(function (key) { allow[String(key)] = true; });
+    plan = plan.filter(function (p) { return allow[p.key]; });
+  }
+
+  var patches = 0;
+  if (apply) {
+    plan.forEach(function (p) {
+      if (applyAuditFieldToDeal_(dealMap[p.dealId], p.label, p.value)) patches++;
+    });
+  }
+
+  var recovered = JSON.parse(JSON.stringify(current));
+  recovered.deals = current.deals.map(function (d) {
+    return dealMap[d.id] ? dealMap[d.id] : d;
+  });
+
+  var diffRows = diffPipeline_(current, recovered);
+  var skippedHighScore = 0;
+  var skippedExcluded = 0;
+  Object.keys(dealMap).forEach(function (id) {
+    if (SELECTIVE_EXCLUDE_DEALS_[id]) skippedExcluded++;
+    else if (calcDisplayScore_(dealMap[id]) >= SELECTIVE_MIN_SCORE_SKIP_) skippedHighScore++;
+  });
+
+  if (apply) {
+    getAuditSheet_();
+    appendAudit_('recover-selective', diffRows);
+    var updatedAt = saveState_(recovered);
+    return {
+      ok: true,
+      applied: true,
+      patches: patches,
+      plan: plan,
+      auditRows: diffRows.length,
+      changes: diffRows.length,
+      updatedAt: updatedAt
+    };
+  }
+  return {
+    ok: true,
+    applied: false,
+    patches: plan.length,
+    plan: plan,
+    changes: diffRows.length,
+    rules: {
+      excludeDeals: ['D-026'],
+      skipDealsWithScoreGte: SELECTIVE_MIN_SCORE_SKIP_,
+      onlyEmptyFields: true
+    }
+  };
 }
 
 function recoverFromAudit_(apply, mode) {
