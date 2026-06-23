@@ -500,8 +500,13 @@ function parseAuditValueToField_(key, raw) {
     var n = Number(s);
     return isNaN(n) ? null : n;
   }
-  if (key === 'taskDue' && s.indexOf('T') > 0) {
-    return s.slice(0, 10);
+  if (key === 'taskDue') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return Utilities.formatDate(d, Session.getScriptTimeZone() || 'Europe/Moscow', 'yyyy-MM-dd');
+    }
+    return s;
   }
   return s;
 }
