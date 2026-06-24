@@ -186,12 +186,16 @@ function calcManagerPassportStats(deals, selectedIds) {
   return Object.entries(byOwner)
     .map(([owner, ownerDeals]) => {
       const stats = calcPassportCompletenessStats(ownerDeals, selectedIds);
+      const ids = selectedIds?.length ? selectedIds : PASSPORT_BLOCKS.map(b => b.id);
+      const blockPcts = ids.map(id => stats.byBlock?.[id]?.pct ?? 0);
+      const avgBlockPct = blockPcts.length ? blockPcts.reduce((a, b) => a + b, 0) / blockPcts.length : 0;
       return {
         owner,
         count: stats.total,
         complete: stats.complete,
         incomplete: stats.incomplete,
         pct: stats.pct,
+        avgBlockPct,
         byBlock: stats.byBlock,
       };
     })
@@ -298,10 +302,14 @@ function renderManagerPassportPanel(m) {
   return `<div class="card" style="margin-bottom:1.5rem">
     <div class="card-header">Менеджеры: полнота паспортов</div>
     <div class="card-body table-wrap">
-      <p class="muted" style="font-size:.78rem;margin-bottom:.65rem">Итоговый % — по выбранным блокам (${selected.map(id => PASSPORT_BLOCKS.find(b => b.id === id)?.short || id).join(" + ")}). Клик по строке — сделки менеджера.</p>
+      <p class="muted" style="font-size:.78rem;margin-bottom:.65rem">
+        <strong>Все блоки</strong> — доля сделок, где заполнены все выбранные блоки сразу (${selected.map(id => PASSPORT_BLOCKS.find(b => b.id === id)?.short || id).join(" + ")}).
+        <strong>Ср. %</strong> — среднее заполнение по выбранным блокам (понятнее для сравнения менеджеров).
+        Клик по строке — сделки менеджера.
+      </p>
       <table class="dash-table manager-passport-table">
         <thead><tr>
-          <th>Менеджер</th><th>Сделок</th><th>Итог %</th><th>Неполн.</th>${blockCols}
+          <th>Менеджер</th><th>Сделок</th><th title="Все выбранные блоки сразу">Все блоки</th><th title="Среднее по выбранным блокам">Ср. %</th><th>Неполн.</th>${blockCols}
         </tr></thead>
         <tbody>${rows.map(r => {
           const attrs = typeof dashDrill === "function"
@@ -313,13 +321,15 @@ function renderManagerPassportPanel(m) {
             return `<td class="num${p >= 80 ? " pct-good" : p >= 50 ? "" : " pct-bad"}">${p}%</td>`;
           }).join("");
           const totalPct = Math.round((r.pct || 0) * 100);
+          const avgPct = Math.round((r.avgBlockPct || 0) * 100);
           return `<tr class="dash-drill-row" ${attrs}>
             <td>${escapeHtml(r.owner)}</td>
             <td>${r.count}</td>
-            <td class="num"><strong>${totalPct}%</strong></td>
+            <td class="num">${totalPct}%</td>
+            <td class="num"><strong>${avgPct}%</strong></td>
             <td>${r.incomplete}</td>${cells}
           </tr>`;
-        }).join("") || `<tr><td colspan="${5 + PASSPORT_BLOCKS.length}" class="muted">Нет данных</td></tr>`}
+        }).join("") || `<tr><td colspan="${6 + PASSPORT_BLOCKS.length}" class="muted">Нет данных</td></tr>`}
         </tbody>
       </table>
     </div>
