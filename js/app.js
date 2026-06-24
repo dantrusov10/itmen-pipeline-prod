@@ -283,13 +283,9 @@ async function loadStateFromServer(opts = {}) {
 }
 
 function countDealsWithCompetitors(s) {
-  return (s?.deals || []).filter(d => {
-    const tr = typeof migrateTechResearch === "function"
-      ? migrateTechResearch(d.techResearch || {})
-      : (d.techResearch || {});
-    return Object.values(tr.competitorEntries || {}).flat()
-      .some(e => e && (e.vendor || e.product));
-  }).length;
+  return (s?.deals || []).filter(d =>
+    typeof dealHasCompetitors === "function" ? dealHasCompetitors(d) : false
+  ).length;
 }
 
 /** Lite-синхронизация могла обрезать competitorEntries — подтягиваем полный пайплайн */
@@ -638,6 +634,18 @@ function strongCommitLabels() {
     .map(c => c.label);
 }
 
+function formatRuDealsCount(n, suffix = "") {
+  const num = Number(n) || 0;
+  const abs = Math.abs(num) % 100;
+  const n1 = abs % 10;
+  let word = "сделок";
+  if (abs < 11 || abs > 14) {
+    if (n1 === 1) word = "сделка";
+    else if (n1 >= 2 && n1 <= 4) word = "сделки";
+  }
+  return suffix ? `${num} ${word} ${suffix}` : `${num} ${word}`;
+}
+
 function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
@@ -649,7 +657,9 @@ function renderPanel(m) {
   const partnerOptions = dashPartnerOptions();
   const commitOptions = dashCommitOptions();
   const budgetStatusOptions = dashBudgetStatusOptions();
-  const maxCommit = Math.max(1, ...Object.values(m.commitCounts));
+  const compDealCount = m.dealsWithCompetitors ?? 0;
+  const compDealLabel = formatRuDealsCount(compDealCount, "с конкурентами");
+  const maxCommit = Math.max(1, ...Object.values(m.commitCounts || {}));
   const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
   const maxPeriod = Math.max(1, ...(m.byBudgetPeriod || []).map(x => x.count));
   const catTotal = Math.max(1, n);
@@ -810,7 +820,7 @@ function renderPanel(m) {
 
     <div class="grid grid-2" style="margin-bottom:1.5rem">
       <div class="card">
-        <div class="card-header">Конкурентный ландшафт${m.dealsWithCompetitors ? ` <span class="muted" style="font-weight:400">(${m.dealsWithCompetitors} сделок)</span>` : ""}</div>
+        <div class="card-header">Конкурентный ландшафт${compDealCount ? ` <span class="muted dash-drill-row" style="font-weight:400;cursor:pointer" ${dashDrill(buildDealsReportSpec({}, { type: "hasCompetitors" }))} title="Открыть все сделки с конкурентами">(${escapeHtml(compDealLabel)})</span>` : ""}</div>
         <div class="card-body">
           ${(m.topCompetitors || []).length ? `<div class="funnel">
             ${m.topCompetitors.map(row => {
@@ -1471,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const boot = parseLocationHash();
   navigate(boot.page || "panel", boot.spec);
   const footer = document.querySelector(".sidebar-footer");
-  if (footer) footer.textContent = "Пайплайн · ui4 · Google Таблица";
+  if (footer) footer.textContent = "Пайплайн · ui5 · Google Таблица";
 
   window.addEventListener("hashchange", () => {
     const p = parseLocationHash();

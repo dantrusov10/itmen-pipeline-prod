@@ -64,10 +64,16 @@ function applyPresetFilter(rows, preset) {
       const key = preset.value;
       if (!key) return rows;
       return rows.filter(d => {
-        const entries = Object.values(d.techResearch?.competitorEntries || {}).flat();
+        const entries = typeof meaningfulCompetitorEntries === "function"
+          ? meaningfulCompetitorEntries(d.techResearch)
+          : Object.values(d.techResearch?.competitorEntries || {}).flat();
         return entries.some(e => typeof competitorEntryKey === "function" && competitorEntryKey(e) === key);
       });
     }
+    case "hasCompetitors":
+      return rows.filter(d => typeof dealHasCompetitors === "function"
+        ? dealHasCompetitors(d)
+        : Object.values(d.techResearch?.competitorEntries || {}).flat().some(e => e && (e.vendor || e.product)));
     default:
       return rows;
   }
@@ -236,6 +242,7 @@ function getDealsReportFilterSummary() {
       overdue: "Просроченные задачи",
       segment: `Сегмент: ${dealsTablePreset.value || ""}`,
       competitor: `Конкурент: ${dealsTablePreset.value || ""}`,
+      hasCompetitors: "Сделки с конкурентами",
     };
     parts.push(labels[dealsTablePreset.type] || dealsTablePreset.type);
   }

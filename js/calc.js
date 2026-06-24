@@ -600,20 +600,33 @@ function competitorEntryLabel(e) {
   return `${vendor} · ${product}`;
 }
 
+function meaningfulCompetitorEntries(tr) {
+  const migrated = typeof migrateTechResearch === "function"
+    ? migrateTechResearch(tr || {})
+    : (tr || {});
+  return Object.values(migrated.competitorEntries || {}).flat()
+    .filter(e => {
+      if (!e) return false;
+      const vendor = String(e.vendor || "").trim();
+      const product = String(e.product || "").trim();
+      return (vendor && vendor !== "—") || (product && product !== "—");
+    });
+}
+
+function dealHasCompetitors(d) {
+  return meaningfulCompetitorEntries(d?.techResearch).length > 0;
+}
+
 function calcCompetitorAnalytics(all) {
   const statusLabels = Object.fromEntries((window.ITMEN_CONFIG?.competitorStatuses || []).map(s => [s.id, s.label]));
   const byVendor = {};
   const statusTotals = {};
-  let dealsWithCompetitors = 0;
+  const dealIdsWithCompetitors = new Set();
 
   all.forEach(d => {
-    const tr = typeof migrateTechResearch === "function"
-      ? migrateTechResearch(d.techResearch || {})
-      : (d.techResearch || {});
-    const entries = Object.values(tr.competitorEntries || {}).flat()
-      .filter(e => e && (e.vendor || e.product));
+    const entries = meaningfulCompetitorEntries(d.techResearch);
     if (!entries.length) return;
-    dealsWithCompetitors++;
+    dealIdsWithCompetitors.add(d.id || d.customer);
     const keysInDeal = new Set();
     entries.forEach(e => {
       const key = competitorEntryKey(e);
@@ -643,7 +656,7 @@ function calcCompetitorAnalytics(all) {
     .map(([id, count]) => ({ id, label: statusLabels[id] || id, count }))
     .sort((a, b) => b.count - a.count);
 
-  return { topCompetitors, competitorStatusSummary, dealsWithCompetitors };
+  return { topCompetitors, competitorStatusSummary, dealsWithCompetitors: dealIdsWithCompetitors.size };
 }
 
 function escapeHtml(s) {
