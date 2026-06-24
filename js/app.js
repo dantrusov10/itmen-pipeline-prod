@@ -282,6 +282,38 @@ async function loadStateFromServer(opts = {}) {
   return loadStateLocal();
 }
 
+function countDealsWithCompetitors(s) {
+  return (s?.deals || []).filter(d => {
+    const tr = typeof migrateTechResearch === "function"
+      ? migrateTechResearch(d.techResearch || {})
+      : (d.techResearch || {});
+    return Object.values(tr.competitorEntries || {}).flat()
+      .some(e => e && (e.vendor || e.product));
+  }).length;
+}
+
+/** Lite-синхронизация могла обрезать competitorEntries — подтягиваем полный пайплайн */
+async function healStrippedCompetitorData() {
+  if (!window.ITMEN_API?.enabled || sessionStorage.getItem("itmen_comp_heal_done")) return false;
+  const total = (state?.deals || []).length;
+  const withComp = countDealsWithCompetitors(state);
+  if (total < 50 || withComp >= 8) return false;
+  sessionStorage.setItem("itmen_comp_heal_done", "1");
+  showSyncBanner("⟳ Восстанавливаем конкурентов с сервера…", "sync");
+  try {
+    const full = await apiLoadPipeline({ lite: false });
+    if (!full?.deals?.length) return false;
+    state = migrateState(full);
+    persistStateCache(state);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+    invalidateMetricsCache();
+    return true;
+  } catch (e) {
+    console.warn("healStrippedCompetitorData:", e);
+    return false;
+  }
+}
+
 async function loadPipelineAfterServerCount(cached, lite, replaced) {
   if (replaced) {
     clearLocalPipelineCache();
@@ -305,6 +337,13 @@ async function bootstrapPipelineFromServer() {
   const serverCount = lite.deals.length;
   const replaced = shouldReplaceLocalWithServer(cached, lite);
   state = await loadPipelineAfterServerCount(cached, lite, replaced);
+  let healedCompetitors = false;
+  if (await healStrippedCompetitorData()) {
+    updateDealCountBadge();
+    showSyncBanner(`✓ Конкуренты восстановлены (${countDealsWithCompetitors(state)} сделок)`, "ok");
+    setTimeout(clearSyncBanner, 4000);
+    healedCompetitors = true;
+  }
   persistStateCache(state);
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
   updateDealCountBadge();
@@ -317,7 +356,7 @@ async function bootstrapPipelineFromServer() {
     );
     document.getElementById("force-reload-btn")?.addEventListener("click", () => forceReloadFromServer());
     setTimeout(clearSyncBanner, 6000);
-  } else {
+  } else if (!healedCompetitors) {
     clearSyncBanner();
   }
 }
@@ -1431,6 +1470,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderAll();
   const boot = parseLocationHash();
   navigate(boot.page || "panel", boot.spec);
+  const footer = document.querySelector(".sidebar-footer");
+  if (footer) footer.textContent = "Пайплайн · ui4 · Google Таблица";
 
   window.addEventListener("hashchange", () => {
     const p = parseLocationHash();
