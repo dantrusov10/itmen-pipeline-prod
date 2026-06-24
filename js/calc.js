@@ -577,8 +577,13 @@ function normCompetitorToken(s) {
   return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Ключ группировки: один вендор без продукта = одна строка; иначе vendor / product */
+/** Ключ группировки: catalogKey, иначе vendor / product (нормализовано) */
 function competitorEntryKey(e) {
+  const ck = String(e?.catalogKey || "").trim();
+  if (ck && ck !== "—") {
+    const parts = ck.split("|||").map(p => normCompetitorToken(p)).filter(Boolean);
+    if (parts.length) return parts.join(" / ");
+  }
   const vendorRaw = String(e?.vendor || "").trim();
   const productRaw = String(e?.product || "").trim();
   const vendor = normCompetitorToken(vendorRaw);
@@ -602,7 +607,10 @@ function calcCompetitorAnalytics(all) {
   let dealsWithCompetitors = 0;
 
   all.forEach(d => {
-    const entries = Object.values(d.techResearch?.competitorEntries || {}).flat()
+    const tr = typeof migrateTechResearch === "function"
+      ? migrateTechResearch(d.techResearch || {})
+      : (d.techResearch || {});
+    const entries = Object.values(tr.competitorEntries || {}).flat()
       .filter(e => e && (e.vendor || e.product));
     if (!entries.length) return;
     dealsWithCompetitors++;
@@ -630,7 +638,7 @@ function calcCompetitorAnalytics(all) {
 
   const topCompetitors = Object.values(byVendor)
     .sort((a, b) => b.dealCount - a.dealCount || b.mentions - a.mentions)
-    .slice(0, 10);
+    .slice(0, 15);
   const competitorStatusSummary = Object.entries(statusTotals)
     .map(([id, count]) => ({ id, label: statusLabels[id] || id, count }))
     .sort((a, b) => b.count - a.count);

@@ -243,7 +243,8 @@ function stripDealLite_(d) {
       seekingSegments: tr.seekingSegments || [],
       seekingOtherLabel: tr.seekingOtherLabel || '',
       productRequirementsPct: tr.productRequirementsPct,
-      pilotRequirementsPct: tr.pilotRequirementsPct
+      pilotRequirementsPct: tr.pilotRequirementsPct,
+      competitorEntries: tr.competitorEntries || {}
     };
   }
   copy._lite = true;

@@ -282,6 +282,20 @@ async function loadStateFromServer(opts = {}) {
   return loadStateLocal();
 }
 
+async function loadPipelineAfterServerCount(cached, lite, replaced) {
+  if (replaced) {
+    clearLocalPipelineCache();
+    try {
+      const full = await apiLoadPipeline({ lite: false });
+      if (full?.deals?.length) return migrateState(full);
+    } catch (e) {
+      console.warn("full load after replace failed, using lite", e);
+    }
+    return migrateState(lite);
+  }
+  return mergeLiteState(cached, lite);
+}
+
 async function bootstrapPipelineFromServer() {
   showSyncBanner("⟳ Загрузка данных с Google Таблицы…", "sync");
   const lite = await apiLoadPipeline({ lite: true });
@@ -290,8 +304,7 @@ async function bootstrapPipelineFromServer() {
   const localCount = (cached?.deals || []).length;
   const serverCount = lite.deals.length;
   const replaced = shouldReplaceLocalWithServer(cached, lite);
-  if (replaced) clearLocalPipelineCache();
-  state = replaced ? replaceStateFromServer(lite) : mergeLiteState(cached, lite);
+  state = await loadPipelineAfterServerCount(cached, lite, replaced);
   persistStateCache(state);
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
   updateDealCountBadge();
@@ -327,7 +340,7 @@ async function syncPipelineFromServer() {
     const localCount = (cached?.deals || []).length;
     const serverCount = (lite?.deals || []).length;
     const replaced = shouldReplaceLocalWithServer(cached, lite);
-    state = replaced ? replaceStateFromServer(lite) : mergeLiteState(cached, lite);
+    state = await loadPipelineAfterServerCount(cached, lite, replaced);
     const changed = replaced || isServerNewer(state, cached);
     persistStateCache(state);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
@@ -762,14 +775,14 @@ function renderPanel(m) {
         <div class="card-body">
           ${(m.topCompetitors || []).length ? `<div class="funnel">
             ${m.topCompetitors.map(row => {
-              const max = Math.max(1, m.topCompetitors[0]?.dealCount || 1);
+              const max = Math.max(1, m.topCompetitors[0]?.mentions || 1);
               const label = `${row.vendor || "—"}${row.product ? " · " + row.product : ""}`;
               const topSt = Object.entries(row.statuses || {}).sort((a, b) => b[1] - a[1])[0];
               const stLabel = topSt ? ((window.ITMEN_CONFIG?.competitorStatuses || []).find(s => s.id === topSt[0])?.label || topSt[0]) : "";
               return `<div class="funnel-row dash-drill-row" ${dashDrill(buildDealsReportSpec({}, { type: "competitor", value: row.key }))} title="Открыть сделки с этим конкурентом">
                 <span class="name" title="${escapeHtml(row.key)}">${escapeHtml(label.length > 28 ? label.slice(0, 26) + "…" : label)}</span>
-                <div class="bar-wrap"><div class="bar" style="width:${(row.dealCount / max) * 100}%;background:#c05621"></div></div>
-                <span class="count">${row.dealCount}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(row.mentions / max) * 100}%;background:#c05621"></div></div>
+                <span class="count" title="${row.dealCount} сделок">${row.mentions}</span>
                 ${stLabel ? `<span class="pct" style="min-width:5rem;text-align:right"><small>${escapeHtml(stLabel)}</small></span>` : ""}
               </div>`;
             }).join("")}
