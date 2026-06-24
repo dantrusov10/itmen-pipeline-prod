@@ -361,12 +361,12 @@ function showToast(msg) {
 }
 
 function navigate(page, reportSpec) {
-  activePage = page;
+  activePage = normalizePageId(page);
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav a").forEach(a => a.classList.remove("active"));
-  document.getElementById("page-" + page)?.classList.add("active");
-  document.querySelector(`.nav a[data-page="${page}"]`)?.classList.add("active");
-  document.getElementById("page-title").textContent = PAGES[page]?.title || page;
+  document.getElementById("page-" + activePage)?.classList.add("active");
+  document.querySelector(`.nav a[data-page="${activePage}"]`)?.classList.add("active");
+  document.getElementById("page-title").textContent = PAGES[activePage]?.title || activePage;
   document.body.classList.toggle("page-deals-active", page === "deals");
   document.getElementById("sidebar")?.classList.remove("open");
   if (page === "deals") {
@@ -380,13 +380,33 @@ function navigate(page, reportSpec) {
 }
 
 function renderActivePage() {
-  if (activePage === "panel") renderPanel(getDashboardMetrics());
-  else if (activePage === "deals") {
-    renderDealsTable(getEnrichedDeals());
-    if (typeof syncDealsReportFiltersToUI === "function") syncDealsReportFiltersToUI();
-    if (typeof renderDealsFilterBanner === "function") renderDealsFilterBanner();
+  try {
+    if (activePage === "panel") renderPanel(getDashboardMetrics());
+    else if (activePage === "deals") {
+      renderDealsTable(getEnrichedDeals());
+      if (typeof syncDealsReportFiltersToUI === "function") syncDealsReportFiltersToUI();
+      if (typeof renderDealsFilterBanner === "function") renderDealsFilterBanner();
+    }
+    else if (activePage === "scoring") renderScoring();
+    else {
+      activePage = "panel";
+      document.getElementById("page-panel")?.classList.add("active");
+      renderPanel(getDashboardMetrics());
+    }
+  } catch (err) {
+    console.error("renderActivePage failed:", err);
+    const pageEl = document.getElementById("page-" + activePage) || document.getElementById("page-panel");
+    if (pageEl) {
+      pageEl.classList.add("active");
+      pageEl.innerHTML = `<div class="card" style="margin:1rem;border-color:#f5c6cb">
+        <div class="card-body">
+          <strong>Ошибка отображения</strong>
+          <p class="muted" style="margin:.5rem 0">${escapeHtml(err.message || String(err))}</p>
+          <button type="button" class="btn btn-sm" onclick="location.reload()">Обновить страницу</button>
+        </div>
+      </div>`;
+    }
   }
-  else if (activePage === "scoring") renderScoring();
 }
 
 function renderAll() {
@@ -404,6 +424,9 @@ function withDashboardFilters(spec) {
   if (dashboardFilters.category?.length) filters.category = [...dashboardFilters.category];
   if (dashboardFilters.budgetPeriod?.length) filters.budgetPeriod = [...dashboardFilters.budgetPeriod];
   if (dashboardFilters.stage?.length) filters.stage = [...dashboardFilters.stage];
+  if (dashboardFilters.partner?.length) filters.partner = [...dashboardFilters.partner];
+  if (dashboardFilters.commitStatus?.length) filters.commitStatus = [...dashboardFilters.commitStatus];
+  if (dashboardFilters.budgetStatus?.length) filters.budgetStatus = [...dashboardFilters.budgetStatus];
   return buildDealsReportSpec(filters, spec.preset);
 }
 
@@ -1118,13 +1141,19 @@ async function importJson(input) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  let loadError = null;
   if (window.ITMEN_API?.enabled) {
     try {
       state = await loadStateFromServer();
     } catch (e) {
-      alert("Не удалось загрузить данные: " + (e.message || "ошибка сервера")
-        + "\n\nПроверьте URL в js/gas-config.js и развёртывание Apps Script (доступ «Все»).");
-      return;
+      loadError = e;
+      console.error(e);
+      try {
+        state = loadStateLocal();
+        if (!state?.deals?.length) state = migrateState(structuredClone(window.ITMEN_INITIAL));
+      } catch (e2) {
+        state = migrateState(structuredClone(window.ITMEN_INITIAL));
+      }
     }
   } else {
     state = loadStateLocal();
@@ -1144,6 +1173,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".modal-overlay").forEach(m => {
     m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
   });
+
+  if (loadError) {
+    const bar = document.createElement("div");
+    bar.style.cssText = "background:#fff3cd;border-bottom:1px solid #ffc107;padding:.55rem 1rem;font-size:.85rem;color:#664d03";
+    bar.innerHTML = `⚠️ Не удалось загрузить свежие данные с сервера: <strong>${escapeHtml(loadError.message || "ошибка")}</strong>. Показана локальная копия. <button type="button" class="btn btn-sm" id="retry-load-btn">Повторить</button>`;
+    document.querySelector(".main")?.prepend(bar);
+    bar.querySelector("#retry-load-btn")?.addEventListener("click", async () => {
+      try {
+        state = await loadStateFromServer();
+        bar.remove();
+        renderAll();
+        showToast("Данные обновлены с сервера");
+      } catch (e2) {
+        alert("Повтор не удался: " + (e2.message || e2));
+      }
+    });
+  }
 
   bindDashboardEvents();
   if (typeof bindDealsTableEvents === "function") bindDealsTableEvents();

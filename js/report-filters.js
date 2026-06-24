@@ -67,12 +67,21 @@ function serializeDealsReportSpec(spec) {
   return qs ? `deals?${qs}` : "deals";
 }
 
+function normalizePageId(page) {
+  const p = String(page || "").replace(/^\/+/, "").trim();
+  if (!p || p === "/") return "panel";
+  if (p.startsWith("deals")) return "deals";
+  if (PAGES && PAGES[p]) return p;
+  return "panel";
+}
+
 function parseLocationHash() {
   const raw = (location.hash || "").replace(/^#/, "");
   if (!raw) return { page: "panel", spec: null };
   const q = raw.indexOf("?");
-  const page = q >= 0 ? raw.slice(0, q) : raw;
+  let page = q >= 0 ? raw.slice(0, q) : raw;
   const query = q >= 0 ? raw.slice(q + 1) : "";
+  page = normalizePageId(page);
   if (page !== "deals" || !query) return { page, spec: null };
   const params = new URLSearchParams(query);
   const filters = {};

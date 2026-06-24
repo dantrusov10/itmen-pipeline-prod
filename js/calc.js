@@ -472,11 +472,12 @@ function calcMetrics(deals) {
 
   const byPartner = {};
   all.forEach(x => {
-    const p = x.partner?.trim() || "Без партнёра";
-    if (!byPartner[p]) byPartner[p] = { count: 0, pipeline: 0, weighted: 0 };
-    byPartner[p].count++;
-    byPartner[p].pipeline += x.expectedAmount || 0;
-    if (isWeightedDeal(x.score, x.category)) byPartner[p].weighted += x.expectedAmount || 0;
+    const p = x.partner != null && x.partner !== "" ? String(x.partner).trim() : "";
+    const partnerKey = p || "Без партнёра";
+    if (!byPartner[partnerKey]) byPartner[partnerKey] = { count: 0, pipeline: 0, weighted: 0 };
+    byPartner[partnerKey].count++;
+    byPartner[partnerKey].pipeline += x.expectedAmount || 0;
+    if (isWeightedDeal(x.score, x.category)) byPartner[partnerKey].weighted += x.expectedAmount || 0;
   });
 
   const byStage = {};
