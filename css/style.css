@@ -602,6 +602,48 @@ body.page-deals-active .deals-table-hint {
   border-radius: var(--radius);
   overflow: visible;
 }
+.dynamics-card .card-body { min-height: 120px; }
+.dynamics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.dynamics-period-tabs { display: flex; gap: .35rem; }
+.dynamics-period-btn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.dynamics-hint { font-size: .78rem; }
+.dynamics-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: .35rem;
+  height: 140px;
+  padding: .5rem 0;
+}
+.dynamics-trend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 100%;
+}
+.dynamics-trend-bar {
+  width: 100%;
+  max-width: 28px;
+  background: linear-gradient(180deg, #4299e1, #2c5282);
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+}
+.dynamics-trend-label { font-size: .65rem; color: var(--muted); margin-top: .25rem; }
+.delta-up { color: #276749; }
+.delta-down { color: #c53030; }
+.delta-flat { color: var(--muted); }
+.dynamics-delta-table { font-size: .82rem; }
+.budget-matrix { font-size: .78rem; }
+.budget-matrix-cell.has-data { font-weight: 600; color: var(--navy); }
+.budget-matrix th { white-space: nowrap; }
 .dash-filter-field {
   display: flex;
   flex-direction: column;

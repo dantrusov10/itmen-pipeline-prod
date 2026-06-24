@@ -454,17 +454,29 @@ function calcMetrics(deals) {
   const byOwner = {};
   all.forEach(x => {
     const o = x.owner || "Не назначен";
-    if (!byOwner[o]) byOwner[o] = { count: 0, pipeline: 0, weighted: 0, hot: 0, warm: 0, scores: [] };
+    if (!byOwner[o]) byOwner[o] = { count: 0, pipeline: 0, weighted: 0, hot: 0, warm: 0, scores: [], incomplete: 0, overdue: 0, risks: 0 };
     byOwner[o].count++;
     byOwner[o].pipeline += x.expectedAmount || 0;
     byOwner[o].weighted += isWeightedDeal(x.score, x.category) ? (x.expectedAmount || 0) : 0;
     if (x.category === "Горячая") byOwner[o].hot++;
     if (x.category === "Тёплая") byOwner[o].warm++;
     if (x.score != null) byOwner[o].scores.push(x.score);
+    if (x.quality === "Неполный") byOwner[o].incomplete++;
+    if (x.daysTo != null && x.daysTo < 0) byOwner[o].overdue++;
+    if (x.riskFlag) byOwner[o].risks++;
   });
   Object.values(byOwner).forEach(v => {
     v.avgScore = v.scores.length ? Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length) : null;
     delete v.scores;
+  });
+
+  const byPartner = {};
+  all.forEach(x => {
+    const p = x.partner?.trim() || "Без партнёра";
+    if (!byPartner[p]) byPartner[p] = { count: 0, pipeline: 0, weighted: 0 };
+    byPartner[p].count++;
+    byPartner[p].pipeline += x.expectedAmount || 0;
+    if (isWeightedDeal(x.score, x.category)) byPartner[p].weighted += x.expectedAmount || 0;
   });
 
   const byStage = {};
@@ -499,6 +511,17 @@ function calcMetrics(deals) {
   const byBudgetPeriod = [...periodOrder, ...Object.keys(byPeriodMap).filter(p => !periodOrder.includes(p))]
     .filter(p => byPeriodMap[p])
     .map(period => ({ period, ...byPeriodMap[period] }));
+
+  const budgetMatrix = {};
+  const matrixPeriods = [...periodOrder];
+  const statusList = state?.lists?.budgetStatus || window.ITMEN_CONFIG?.budgetStatuses || [];
+  all.forEach(x => {
+    const p = x.budgetPeriod || "Не определён";
+    const b = x.budgetStatus || "Неизвестно";
+    if (!budgetMatrix[p]) budgetMatrix[p] = {};
+    budgetMatrix[p][b] = (budgetMatrix[p][b] || 0) + 1;
+    if (!matrixPeriods.includes(p)) matrixPeriods.push(p);
+  });
 
   const loyaltyVals = all.map(x => x.scores?.loyalty).filter(v => v != null && v > 0);
   const avgLoyalty = loyaltyVals.length
@@ -537,7 +560,8 @@ function calcMetrics(deals) {
     passportCompleteness, byOwner, stageFunnel, byBudget, byBudgetPeriod,
     avgLoyalty, highLoyalty, topSegments,
     avgProductPct, avgPilotPct, topDeals, attention, inPilot, deals: all,
-    pipelineCount: all.length,
+    pipelineCount: all.length, byPartner, budgetMatrix, budgetMatrixPeriods: matrixPeriods,
+    budgetMatrixStatuses: statusList,
   };
 }
 

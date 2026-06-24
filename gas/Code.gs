@@ -8,6 +8,8 @@
 
 var STATE_SHEET = '_pipeline';
 var AUDIT_SHEET = '_audit';
+var SNAPSHOT_DAILY_SHEET = '_snapshots_daily';
+var SNAPSHOT_DEALS_SHEET = '_snapshots_deals';
 var CHUNK_SIZE = 40000;
 var AUDIT_VALUE_MAX = 1500;
 
@@ -85,6 +87,13 @@ function doGet(e) {
       return json_({
         rows: auditSh.getRange(startRow, 1, numRows, 9).getValues()
       });
+    }
+    if (action === 'dynamics') {
+      var period = String((e.parameter && e.parameter.period) || 'week');
+      return json_(getDynamics_(period));
+    }
+    if (action === 'snapshotNow') {
+      return json_(takeDailySnapshot_('manual'));
     }
     if (action === 'init' || action === 'setup') {
       getStateSheet_();
@@ -816,5 +825,344 @@ function recoverFromAudit_(apply, mode) {
 function setup() {
   getStateSheet_();
   getAuditSheet_();
-  Logger.log('Листы _pipeline и _audit готовы. Теперь: Развернуть → Веб-приложение.');
+  getSnapshotDailySheet_();
+  getSnapshotDealsSheet_();
+  installSnapshotTrigger_();
+  Logger.log('Листы _pipeline, _audit, _snapshots_* готовы. Триггер снапшота 23:59 МСК установлен. Развернуть → Веб-приложение.');
+}
+
+var SCORE_WEIGHTS_GAS_ = {
+  loyalty: 0.10, commit: 0.10, budget: 0.18, fit: 0.18, timing: 0.14,
+  competitive: 0.10, access: 0.08, technical: 0.06, commercial: 0.06
+};
+
+function calcDealScoreGas_(scores) {
+  if (!scores) return 0;
+  var sum = 0;
+  var k;
+  for (k in SCORE_WEIGHTS_GAS_) {
+    if (SCORE_WEIGHTS_GAS_.hasOwnProperty(k)) sum += (scores[k] || 0) * SCORE_WEIGHTS_GAS_[k];
+  }
+  return Math.round((sum / 5) * 100);
+}
+
+function calcCategoryGas_(score) {
+  if (score >= 80) return 'Горячая';
+  if (score >= 60) return 'Тёплая';
+  if (score >= 40) return 'Наблюдение';
+  return 'Отказ';
+}
+
+function isWeightedDealGas_(score, category) {
+  return category === 'Горячая' || category === 'Тёплая' || score >= 60;
+}
+
+function formatDateMsk_(date) {
+  return Utilities.formatDate(date, 'Europe/Moscow', 'yyyy-MM-dd');
+}
+
+function getSnapshotDailySheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SNAPSHOT_DAILY_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SNAPSHOT_DAILY_SHEET);
+    sh.hideSheet();
+    sh.appendRow(['date', 'ts', 'dealCount', 'totalPipeline', 'weightedPipeline', 'hotCount', 'warmCount', 'avgScore']);
+    sh.getRange(1, 1, 1, 8).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function getSnapshotDealsSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SNAPSHOT_DEALS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SNAPSHOT_DEALS_SHEET);
+    sh.hideSheet();
+    sh.appendRow(['date', 'ts', 'dealId', 'customer', 'owner', 'score', 'amount', 'category']);
+    sh.getRange(1, 1, 1, 8).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function removeSnapshotForDate_(dateStr) {
+  [getSnapshotDailySheet_(), getSnapshotDealsSheet_()].forEach(function (sh) {
+    var last = sh.getLastRow();
+    if (last < 2) return;
+    var vals = sh.getRange(2, 1, last, 1).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      if (String(vals[i][0]) === dateStr) sh.deleteRow(i + 2);
+    }
+  });
+}
+
+function takeDailySnapshot_(source) {
+  source = source || 'cron';
+  var tz = 'Europe/Moscow';
+  var today = formatDateMsk_(new Date());
+  var ts = new Date().toISOString();
+  var state = loadState_() || { deals: [] };
+  var deals = state.deals || [];
+  removeSnapshotForDate_(today);
+
+  var totalPipeline = 0;
+  var weightedPipeline = 0;
+  var hotCount = 0;
+  var warmCount = 0;
+  var scoreSum = 0;
+  var scoreN = 0;
+  var dealRows = [];
+
+  deals.forEach(function (d) {
+    if (!d || !d.id) return;
+    var score = calcDealScoreGas_(d.scores);
+    var category = calcCategoryGas_(score);
+    var amount = Number(d.amount) || 0;
+    totalPipeline += amount;
+    if (isWeightedDealGas_(score, category)) weightedPipeline += amount;
+    if (category === 'Горячая') hotCount++;
+    if (category === 'Тёплая') warmCount++;
+    if (score > 0) { scoreSum += score; scoreN++; }
+    dealRows.push([
+      today, ts, String(d.id), String(d.customer || ''), String(d.owner || ''),
+      score, amount, category
+    ]);
+  });
+
+  var avgScore = scoreN ? Math.round(scoreSum / scoreN) : 0;
+  getSnapshotDailySheet_().appendRow([
+    today, ts, deals.length, totalPipeline, weightedPipeline, hotCount, warmCount, avgScore
+  ]);
+  if (dealRows.length) {
+    getSnapshotDealsSheet_().getRange(
+      getSnapshotDealsSheet_().getLastRow() + 1, 1, dealRows.length, 8
+    ).setValues(dealRows);
+  }
+  return {
+    ok: true,
+    source: source,
+    date: today,
+    dealCount: deals.length,
+    totalPipeline: totalPipeline,
+    weightedPipeline: weightedPipeline,
+    avgScore: avgScore
+  };
+}
+
+function dailySnapshot_() {
+  takeDailySnapshot_('cron');
+}
+
+function installSnapshotTrigger_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'dailySnapshot_') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('dailySnapshot_')
+    .timeBased()
+    .atHour(23)
+    .nearMinute(59)
+    .everyDays(1)
+    .inTimezone('Europe/Moscow')
+    .create();
+}
+
+function readSnapshotDailySince_(fromDateStr) {
+  var sh = getSnapshotDailySheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var rows = sh.getRange(2, 1, last, 8).getValues();
+  return rows.filter(function (r) { return String(r[0]) >= fromDateStr; }).map(function (r) {
+    return {
+      date: String(r[0]),
+      ts: String(r[1]),
+      dealCount: +r[2] || 0,
+      totalPipeline: +r[3] || 0,
+      weightedPipeline: +r[4] || 0,
+      hotCount: +r[5] || 0,
+      warmCount: +r[6] || 0,
+      avgScore: +r[7] || 0
+    };
+  });
+}
+
+function readDealSnapshotsForDate_(dateStr) {
+  var sh = getSnapshotDealsSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return {};
+  var rows = sh.getRange(2, 1, last, 8).getValues();
+  var map = {};
+  rows.forEach(function (r) {
+    if (String(r[0]) !== dateStr) return;
+    map[String(r[2])] = {
+      dealId: String(r[2]),
+      customer: String(r[3]),
+      owner: String(r[4]),
+      score: +r[5] || 0,
+      amount: +r[6] || 0,
+      category: String(r[7])
+    };
+  });
+  return map;
+}
+
+function parseAuditScore_(raw) {
+  try {
+    var sc = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return calcDealScoreGas_(sc);
+  } catch (e) {
+    return null;
+  }
+}
+
+function parseAuditWhen_(when) {
+  if (!when) return null;
+  var d = new Date(when);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function buildAuditScoreTimeline_() {
+  var rows = readAllAuditRows_();
+  var timeline = {};
+  rows.forEach(function (row) {
+    if (String(row[6]) !== 'Скоринг') return;
+    var dealId = String(row[2] || '');
+    if (!dealId) return;
+    var when = parseAuditWhen_(row[0]);
+    if (!when) return;
+    var score = parseAuditScore_(row[8]);
+    if (score == null) return;
+    if (!timeline[dealId]) timeline[dealId] = [];
+    timeline[dealId].push({ when: when, score: score, customer: String(row[3] || ''), owner: String(row[5] || '') });
+  });
+  Object.keys(timeline).forEach(function (id) {
+    timeline[id].sort(function (a, b) { return a.when - b.when; });
+  });
+  return timeline;
+}
+
+function scoreAtOrBefore_(timeline, dealId, cutoff) {
+  var entries = timeline[dealId];
+  if (!entries || !entries.length) return null;
+  var found = null;
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i].when <= cutoff) found = entries[i];
+    else break;
+  }
+  return found;
+}
+
+function periodDays_(period) {
+  if (period === 'month') return 30;
+  if (period === 'quarter') return 90;
+  return 7;
+}
+
+function getDynamics_(period) {
+  var days = periodDays_(period);
+  var now = new Date();
+  var from = new Date(now.getTime() - days * 86400000);
+  var fromStr = formatDateMsk_(from);
+  var state = loadState_() || { deals: [] };
+  var daily = readSnapshotDailySince_(fromStr);
+  var baselineDate = daily.length ? daily[0].date : null;
+  var baselineDeals = baselineDate ? readDealSnapshotsForDate_(baselineDate) : {};
+  var auditTimeline = buildAuditScoreTimeline_();
+
+  var deltas = [];
+  (state.deals || []).forEach(function (d) {
+    if (!d || !d.id) return;
+    var curScore = calcDealScoreGas_(d.scores);
+    var base = baselineDeals[d.id];
+    var baseScore = base ? base.score : null;
+    var meta = base || {};
+    if (baseScore == null) {
+      var auditBase = scoreAtOrBefore_(auditTimeline, d.id, from);
+      if (auditBase) {
+        baseScore = auditBase.score;
+        meta.customer = auditBase.customer;
+        meta.owner = auditBase.owner;
+      }
+    }
+    if (baseScore == null) return;
+    var delta = curScore - baseScore;
+    if (delta === 0) return;
+    deltas.push({
+      dealId: d.id,
+      customer: d.customer || meta.customer || '',
+      owner: d.owner || meta.owner || '',
+      was: baseScore,
+      now: curScore,
+      delta: delta,
+      amount: Number(d.amount) || 0
+    });
+  });
+
+  deltas.sort(function (a, b) { return b.delta - a.delta; });
+  var gains = deltas.filter(function (d) { return d.delta > 0; }).slice(0, 10);
+  var losses = deltas.filter(function (d) { return d.delta < 0; }).sort(function (a, b) { return a.delta - b.delta; }).slice(0, 10);
+
+  var first = daily[0] || null;
+  var last = daily.length ? daily[daily.length - 1] : null;
+  var curTotals = { dealCount: 0, totalPipeline: 0, weightedPipeline: 0, avgScore: 0, hotCount: 0 };
+  var scSum = 0;
+  var scN = 0;
+  (state.deals || []).forEach(function (d) {
+    if (!d) return;
+    curTotals.dealCount++;
+    var amount = Number(d.amount) || 0;
+    var score = calcDealScoreGas_(d.scores);
+    var category = calcCategoryGas_(score);
+    curTotals.totalPipeline += amount;
+    if (isWeightedDealGas_(score, category)) curTotals.weightedPipeline += amount;
+    if (category === 'Горячая') curTotals.hotCount++;
+    if (score > 0) { scSum += score; scN++; }
+  });
+  curTotals.avgScore = scN ? Math.round(scSum / scN) : 0;
+
+  var summary = {
+    pipelineDelta: last ? curTotals.totalPipeline - last.totalPipeline : (first ? curTotals.totalPipeline - first.totalPipeline : 0),
+    weightedDelta: last ? curTotals.weightedPipeline - last.weightedPipeline : (first ? curTotals.weightedPipeline - first.weightedPipeline : 0),
+    avgScoreDelta: last ? curTotals.avgScore - last.avgScore : (first ? curTotals.avgScore - first.avgScore : 0),
+    dealCountDelta: last ? curTotals.dealCount - last.dealCount : (first ? curTotals.dealCount - first.dealCount : 0),
+    baselineDate: baselineDate,
+    snapshotDays: daily.length
+  };
+
+  if (!daily.length) {
+    daily.push({
+      date: formatDateMsk_(now),
+      dealCount: curTotals.dealCount,
+      totalPipeline: curTotals.totalPipeline,
+      weightedPipeline: curTotals.weightedPipeline,
+      hotCount: curTotals.hotCount,
+      warmCount: 0,
+      avgScore: curTotals.avgScore,
+      live: true
+    });
+  } else {
+    daily.push({
+      date: formatDateMsk_(now),
+      dealCount: curTotals.dealCount,
+      totalPipeline: curTotals.totalPipeline,
+      weightedPipeline: curTotals.weightedPipeline,
+      hotCount: curTotals.hotCount,
+      warmCount: 0,
+      avgScore: curTotals.avgScore,
+      live: true
+    });
+  }
+
+  return {
+    ok: true,
+    period: period,
+    days: days,
+    from: fromStr,
+    pipelineTrend: daily,
+    summary: summary,
+    topGains: gains,
+    topLosses: losses,
+    hasSnapshots: readSnapshotDailySince_('2000-01-01').length > 0
+  };
 }

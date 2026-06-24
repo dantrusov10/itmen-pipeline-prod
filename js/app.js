@@ -12,12 +12,13 @@ let modalSuggestion = null;
 let saveInFlight = null;
 let metricsCache = null;
 let activePage = "panel";
-let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [] };
+let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
 const INACTIVE_OWNERS = ["Павел Витков"];
 let dashboardEventsBound = false;
 
 function invalidateMetricsCache() {
   metricsCache = null;
+  if (typeof dynamicsData !== "undefined") dynamicsData = null;
 }
 
 function getEnrichedDeals() {
@@ -41,6 +42,18 @@ function getDashboardDeals() {
   if (dashboardFilters.stage?.length) {
     const selected = new Set(dashboardFilters.stage);
     deals = deals.filter(d => selected.has(d.stage || "—"));
+  }
+  if (dashboardFilters.partner?.length) {
+    const selected = new Set(dashboardFilters.partner);
+    deals = deals.filter(d => selected.has((d.partner || "").trim() || "Без партнёра"));
+  }
+  if (dashboardFilters.commitStatus?.length) {
+    const selected = new Set(dashboardFilters.commitStatus);
+    deals = deals.filter(d => selected.has(commitLabel(d.commitStatus)));
+  }
+  if (dashboardFilters.budgetStatus?.length) {
+    const selected = new Set(dashboardFilters.budgetStatus);
+    deals = deals.filter(d => selected.has(d.budgetStatus || "Неизвестно"));
   }
   return deals;
 }
@@ -77,6 +90,29 @@ function dashBudgetPeriodOptions() {
 
 function dashCategoryOptions() {
   return ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
+}
+
+function dashPartnerOptions() {
+  const partners = new Set();
+  (state?.deals || []).forEach(d => partners.add((d.partner || "").trim() || "Без партнёра"));
+  const base = state?.lists?.partners || [];
+  const all = base.filter(p => partners.has(p));
+  partners.forEach(p => { if (!all.includes(p)) all.push(p); });
+  return all.sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function dashCommitOptions() {
+  return (window.ITMEN_CONFIG?.commitStatuses || []).map(c => c.label);
+}
+
+function dashBudgetStatusOptions() {
+  const base = state?.lists?.budgetStatus || window.ITMEN_CONFIG?.budgetStatuses || [];
+  const all = [...base];
+  (state?.deals || []).forEach(d => {
+    const s = d.budgetStatus || "Неизвестно";
+    if (!all.includes(s)) all.push(s);
+  });
+  return all;
 }
 
 function renderDashFilterField(title, multiselectHtml) {
@@ -132,7 +168,9 @@ function closeDashMultiselectPanels(except) {
 
 function dashFiltersActive() {
   return dashboardFilters.owner?.length || dashboardFilters.category?.length
-    || dashboardFilters.budgetPeriod?.length || dashboardFilters.stage?.length;
+    || dashboardFilters.budgetPeriod?.length || dashboardFilters.stage?.length
+    || dashboardFilters.partner?.length || dashboardFilters.commitStatus?.length
+    || dashboardFilters.budgetStatus?.length;
 }
 
 function bindDashboardEvents() {
@@ -150,7 +188,7 @@ function bindDashboardEvents() {
 
   el.addEventListener("click", e => {
     if (e.target.id === "dash-clear-filters") {
-      dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [] };
+      dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
       renderPanel(getDashboardMetrics());
       return;
     }
@@ -387,6 +425,9 @@ function renderPanel(m) {
   const categoryOptions = dashCategoryOptions();
   const periodOptions = dashBudgetPeriodOptions();
   const stageOptions = dashStageOptions();
+  const partnerOptions = dashPartnerOptions();
+  const commitOptions = dashCommitOptions();
+  const budgetStatusOptions = dashBudgetStatusOptions();
   const maxCommit = Math.max(1, ...Object.values(m.commitCounts));
   const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
   const maxPeriod = Math.max(1, ...(m.byBudgetPeriod || []).map(x => x.count));
@@ -401,6 +442,9 @@ function renderPanel(m) {
       ${renderDashFilterField("Категория", renderDashMultiselect("category", categoryOptions, dashboardFilters.category))}
       ${renderDashFilterField("Стадия", renderDashMultiselect("stage", stageOptions, dashboardFilters.stage))}
       ${renderDashFilterField("Срок", renderDashMultiselect("budgetPeriod", periodOptions, dashboardFilters.budgetPeriod))}
+      ${renderDashFilterField("Партнёр", renderDashMultiselect("partner", partnerOptions, dashboardFilters.partner))}
+      ${renderDashFilterField("Коммит", renderDashMultiselect("commitStatus", commitOptions, dashboardFilters.commitStatus))}
+      ${renderDashFilterField("Бюджет", renderDashMultiselect("budgetStatus", budgetStatusOptions, dashboardFilters.budgetStatus))}
       ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
@@ -426,6 +470,11 @@ function renderPanel(m) {
       ${metricCardDrill("Полнота паспортов", m.passportCompleteness != null ? Math.round(m.passportCompleteness * 100) + "%" : "—", `${n - m.incomplete} из ${n} заполнены`, dashDrill(buildDealsReportSpec({}, { type: "incomplete" })))}
       ${metricCardDrill("Сильные коммиты", m.strongCommits || 0, "протокол / LOI / гарантия / контракт", dashDrill(buildDealsReportSpec({ commitStatus: strongCommitLabels() })))}
       ${metricCardDrill("Доля горячих", n ? Math.round((m.hotShare || 0) * 100) + "%" : "—", `${m.counts["Горячая"] || 0} из ${n}`, dashDrill(buildDealsReportSpec({ category: ["Горячая"] })))}
+    </div>
+
+    <div class="card dynamics-card" style="margin-bottom:1.5rem">
+      <div class="card-header">Динамика пайплайна</div>
+      <div class="card-body" id="dynamics-block"></div>
     </div>
 
     <div class="section-title">Распределение по категориям</div>
@@ -476,14 +525,17 @@ function renderPanel(m) {
         <div class="card-header">По владельцам (менеджерам)</div>
         <div class="card-body table-wrap">
           <table class="dash-table">
-            <thead><tr><th>Менеджер</th><th>Сделок</th><th>Пайплайн</th><th>Взвеш.</th><th>Гор./Тёпл.</th><th>Балл</th></tr></thead>
+            <thead><tr><th>Менеджер</th><th>Сделок</th><th>Пайплайн</th><th>Взвеш.</th><th>Гор./Тёпл.</th><th>Балл</th><th>Неполн.</th><th>Проср.</th><th>Риски</th></tr></thead>
             <tbody>${ownerRows.map(([name, v]) => `<tr class="dash-drill-row" ${dashDrill(buildDealsReportSpec({ owner: [name] }))} title="Открыть сделки менеджера">
               <td>${escapeHtml(name)}</td><td>${v.count}</td>
               <td class="num">${formatMoney(v.pipeline)}</td>
               <td class="num">${formatMoney(v.weighted)}</td>
               <td>${v.hot}/${v.warm}</td>
               <td>${v.avgScore ?? "—"}</td>
-            </tr>`).join("") || "<tr><td colspan='6' class='muted'>Нет данных</td></tr>"}
+              <td>${v.incomplete || 0}</td>
+              <td>${v.overdue || 0}</td>
+              <td>${v.risks || 0}</td>
+            </tr>`).join("") || "<tr><td colspan='9' class='muted'>Нет данных</td></tr>"}
             </tbody>
           </table>
         </div>
@@ -529,6 +581,11 @@ function renderPanel(m) {
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-header">Матрица: срок бюджета × статус</div>
+      <div class="card-body">${typeof renderBudgetMatrix === "function" ? renderBudgetMatrix(m) : ""}</div>
     </div>
 
     <div class="card" style="margin-bottom:1.5rem">
@@ -584,6 +641,12 @@ function renderPanel(m) {
       : window.ITMEN_API?.enabled
         ? "Данные на сервере · автосохранение при изменениях."
         : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
+
+  if (typeof bindDynamicsEvents === "function") bindDynamicsEvents();
+  if (typeof renderDynamicsBlock === "function") {
+    if (dynamicsData && dynamicsData.period === dynamicsPeriod) renderDynamicsBlock(dynamicsData);
+    else if (typeof refreshDynamics === "function") refreshDynamics(dynamicsPeriod);
+  }
 }
 
 function renderScoring() {
