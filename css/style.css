@@ -850,6 +850,30 @@ body.page-deals-active .deals-table-hint {
   white-space: normal;
 }
 
+.deals-columns-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem .75rem;
+  max-height: 50vh;
+  overflow: auto;
+}
+.deals-col-opt {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.deals-columns-footer {
+  padding: .75rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+.modal.modal-sm { max-width: 420px; }
+.text-warn { color: #b45309; font-weight: 600; }
+
 .deals-table-hint {
   font-size: .72rem;
   margin: 0 0 .65rem;

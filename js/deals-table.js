@@ -106,7 +106,45 @@ const DEALS_TABLE_COLS = [
       return `<td><small>${escapeHtml(d.commitLabel || "—")}</small></td>`;
     },
   },
+  {
+    key: "partner",
+    label: "Партнёр",
+    filter: "multiselect",
+    filterOptions: deals => resolvePartnerFilterOptions(deals),
+    get: d => (d.partner || "").trim() || "Без партнёра",
+    render(d) {
+      return `<td><small>${escapeHtml((d.partner || "").trim() || "—")}</small></td>`;
+    },
+  },
+  {
+    key: "industry",
+    label: "Отрасль",
+    filter: "multiselect",
+    filterOptions: deals => resolveIndustryFilterOptions(deals),
+    get: d => d.industry || "—",
+    render(d) {
+      return `<td><small>${escapeHtml(d.industry || "—")}</small></td>`;
+    },
+  },
+  {
+    key: "taskDue",
+    label: "Срок задачи",
+    filter: "text",
+    get: d => d.taskDue || "",
+    render(d) {
+      const overdue = d.daysTo != null && d.daysTo < 0;
+      return `<td class="col-date"><small>${escapeHtml(d.taskDue || "—")}${d.daysTo != null ? ` <span class="${overdue ? "text-warn" : ""}">(${d.daysTo} дн.)</span>` : ""}</small></td>`;
+    },
+  },
 ];
+
+const DEALS_COLS_STORAGE_KEY = "itmen_deals_columns_v1";
+const DEALS_DEFAULT_VISIBLE_COLS = [
+  "customer", "stage", "owner", "amount", "score", "category",
+  "manualProb", "budgetStatus", "budgetPeriod", "commitStatus",
+];
+
+let dealsVisibleColKeys = loadDealsVisibleColKeys();
 
 let dealsTableSort = { key: "amount", dir: "desc" };
 let dealsTableColFilters = {};
@@ -205,6 +243,44 @@ function resolveCommitStatusFilterOptions(deals) {
   return all;
 }
 
+function resolvePartnerFilterOptions(deals) {
+  const all = [];
+  (deals || []).forEach(d => {
+    const p = (d.partner || "").trim() || "Без партнёра";
+    if (!all.includes(p)) all.push(p);
+  });
+  return all.sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function resolveIndustryFilterOptions(deals) {
+  return [...new Set((deals || []).map(d => d.industry).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function loadDealsVisibleColKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DEALS_COLS_STORAGE_KEY) || "null");
+    const keys = saved?.visible;
+    if (!Array.isArray(keys) || !keys.length) return [...DEALS_DEFAULT_VISIBLE_COLS];
+    const valid = keys.filter(k => DEALS_TABLE_COLS.some(c => c.key === k));
+    return valid.length ? valid : [...DEALS_DEFAULT_VISIBLE_COLS];
+  } catch {
+    return [...DEALS_DEFAULT_VISIBLE_COLS];
+  }
+}
+
+function persistDealsVisibleCols() {
+  try {
+    localStorage.setItem(DEALS_COLS_STORAGE_KEY, JSON.stringify({ visible: dealsVisibleColKeys }));
+  } catch (e) {
+    console.warn("persistDealsVisibleCols:", e);
+  }
+}
+
+function getVisibleDealsCols() {
+  const map = Object.fromEntries(DEALS_TABLE_COLS.map(c => [c.key, c]));
+  return dealsVisibleColKeys.map(k => map[k]).filter(Boolean);
+}
+
 function matchColFilter(col, d) {
   if (col.filter === "range") return matchRangeFilter(col, d);
   if (col.filter === "multiselect") {
@@ -225,7 +301,7 @@ function applyDealsTableFilters(deals) {
   if (typeof applyPresetFilter === "function" && dealsTablePreset) {
     rows = applyPresetFilter(rows, dealsTablePreset);
   }
-  for (const col of DEALS_TABLE_COLS) {
+  for (const col of getVisibleDealsCols()) {
     if (col.filter === "range") {
       if (dealsTableColFilters[col.key + "__from"] || dealsTableColFilters[col.key + "__to"]) {
         rows = rows.filter(d => matchRangeFilter(col, d));
@@ -244,7 +320,7 @@ function applyDealsTableFilters(deals) {
   const search = (dealsTableSearch || "").trim().toLowerCase();
   if (search) {
     rows = rows.filter(d =>
-      DEALS_TABLE_COLS.some(col => dealCellText(col, d).toLowerCase().includes(search))
+      getVisibleDealsCols().some(col => dealCellText(col, d).toLowerCase().includes(search))
     );
   }
   return rows;
@@ -322,7 +398,7 @@ function renderColFilter(col, deals) {
 function renderDealsTableRow(d) {
   const realIdx = state.deals.findIndex(x => x.id === d.id);
   return `<tr class="deals-row-clickable" data-id="${escapeHtml(d.id)}" title="Открыть паспорт сделки">
-    ${DEALS_TABLE_COLS.map(c => c.render(d)).join("")}
+    ${getVisibleDealsCols().map(c => c.render(d)).join("")}
     <td class="actions">
       <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); openDealModal(${realIdx})" title="Редактировать">✏️</button>
       <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteDeal(${realIdx})" title="Удалить">🗑</button>
@@ -453,6 +529,63 @@ function clearAllDealsFilters() {
   closeAllMultiselectPanels();
 }
 
+function openDealsColumnsModal() {
+  let modal = document.getElementById("deals-columns-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "deals-columns-modal";
+    modal.className = "modal-overlay";
+    document.body.appendChild(modal);
+    modal.addEventListener("click", e => {
+      if (e.target === modal) closeDealsColumnsModal();
+    });
+  }
+  modal.innerHTML = `
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Колонки таблицы</h3>
+        <button type="button" class="btn btn-sm" onclick="closeDealsColumnsModal()" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body deals-columns-list">
+        <p class="muted" style="font-size:.8rem;margin-bottom:.75rem">Настройка сохраняется только в вашем браузере.</p>
+        ${DEALS_TABLE_COLS.map(c => `<label class="deals-col-opt">
+          <input type="checkbox" class="deals-col-cb" value="${c.key}"${dealsVisibleColKeys.includes(c.key) ? " checked" : ""}>
+          <span>${escapeHtml(c.label)}</span>
+        </label>`).join("")}
+      </div>
+      <div class="deals-columns-footer">
+        <button type="button" class="btn btn-sm" id="deals-cols-reset">По умолчанию</button>
+        <button type="button" class="btn btn-primary btn-sm" id="deals-cols-apply">Применить</button>
+      </div>
+    </div>`;
+  modal.classList.add("open");
+  modal.querySelector("#deals-cols-reset")?.addEventListener("click", () => {
+    dealsVisibleColKeys = [...DEALS_DEFAULT_VISIBLE_COLS];
+    openDealsColumnsModal();
+  });
+  modal.querySelector("#deals-cols-apply")?.addEventListener("click", applyDealsColumnsSelection);
+}
+
+function closeDealsColumnsModal() {
+  document.getElementById("deals-columns-modal")?.classList.remove("open");
+}
+
+function applyDealsColumnsSelection() {
+  const modal = document.getElementById("deals-columns-modal");
+  const checked = [...(modal?.querySelectorAll(".deals-col-cb:checked") || [])].map(cb => cb.value);
+  if (!checked.length) {
+    alert("Должна остаться хотя бы одна колонка");
+    return;
+  }
+  dealsVisibleColKeys = checked;
+  persistDealsVisibleCols();
+  closeDealsColumnsModal();
+  if (!dealsVisibleColKeys.includes(dealsTableSort.key)) {
+    dealsTableSort = { key: dealsVisibleColKeys[0] || "amount", dir: "desc" };
+  }
+  renderDealsTable(getEnrichedDeals());
+}
+
 function bindDealsTableEvents() {
   if (dealsTableBound) return;
   dealsTableBound = true;
@@ -527,6 +660,15 @@ function bindDealsTableEvents() {
     }
     if (e.target.id === "deals-copy-link") {
       copyDealsReportLink();
+      return;
+    }
+    if (e.target.id === "deals-columns-btn") {
+      openDealsColumnsModal();
+      return;
+    }
+    if (e.target.id === "deals-export-excel") {
+      if (typeof exportDealsToExcel === "function") exportDealsToExcel();
+      else alert("Модуль экспорта не загружен");
       return;
     }
     const row = e.target.closest("#deals-tbody tr.deals-row-clickable");
@@ -615,6 +757,8 @@ function renderDealsTable(deals) {
       <label class="btn" style="cursor:pointer">⬆️ Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>
       <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск…" value="${escapeHtml(dealsTableSearch)}">
       <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить фильтры</button>
+      <button type="button" class="btn btn-sm" id="deals-columns-btn" title="Настроить видимые колонки">⚙ Колонки</button>
+      <button type="button" class="btn btn-sm" id="deals-export-excel" title="Экспорт текущего среза в Excel">⬇️ Excel</button>
       <button type="button" class="btn btn-sm" id="deals-copy-link" title="Скопировать ссылку с фильтрами">🔗 Поделиться</button>
       <span class="deals-table-meta" id="deals-table-meta"></span>
     </div>
@@ -623,8 +767,8 @@ function renderDealsTable(deals) {
     <div class="deals-table-shell">
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
-          <tr>${DEALS_TABLE_COLS.map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
-          <tr class="deals-filter-row">${DEALS_TABLE_COLS.map(c =>
+          <tr>${getVisibleDealsCols().map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
+          <tr class="deals-filter-row">${getVisibleDealsCols().map(c =>
             `<th>${renderColFilter(c, deals)}</th>`
           ).join("")}<th></th></tr>
         </thead>

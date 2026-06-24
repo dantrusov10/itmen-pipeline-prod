@@ -540,6 +540,8 @@ function calcMetrics(deals) {
   }));
   const topSegments = Object.entries(seekingCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
+  const compStats = calcCompetitorAnalytics(all);
+
   const productPcts = all.map(x => x.projectCompliancePct).filter(v => v != null);
   const pilotPcts = all.map(x => x.pilotCompliancePct).filter(v => v != null);
   const avgProductPct = productPcts.length ? Math.round(productPcts.reduce((a, b) => a + b, 0) / productPcts.length) : null;
@@ -563,7 +565,50 @@ function calcMetrics(deals) {
     avgProductPct, avgPilotPct, topDeals, attention, inPilot, deals: all,
     pipelineCount: all.length, byPartner, budgetMatrix, budgetMatrixPeriods: matrixPeriods,
     budgetMatrixStatuses: statusList,
+    ...compStats,
   };
+}
+
+function competitorEntryKey(e) {
+  const vendor = String(e?.vendor || "").trim() || "—";
+  const product = String(e?.product || "").trim() || "—";
+  return `${vendor} / ${product}`;
+}
+
+function calcCompetitorAnalytics(all) {
+  const statusLabels = Object.fromEntries((window.ITMEN_CONFIG?.competitorStatuses || []).map(s => [s.id, s.label]));
+  const byVendor = {};
+  const statusTotals = {};
+  let dealsWithCompetitors = 0;
+
+  all.forEach(d => {
+    const entries = Object.values(d.techResearch?.competitorEntries || {}).flat()
+      .filter(e => e && (e.vendor || e.product));
+    if (!entries.length) return;
+    dealsWithCompetitors++;
+    const keysInDeal = new Set();
+    entries.forEach(e => {
+      const key = competitorEntryKey(e);
+      if (!byVendor[key]) {
+        byVendor[key] = { key, vendor: e.vendor, product: e.product, dealCount: 0, mentions: 0, statuses: {} };
+      }
+      byVendor[key].mentions++;
+      const st = e.status || "unknown";
+      byVendor[key].statuses[st] = (byVendor[key].statuses[st] || 0) + 1;
+      statusTotals[st] = (statusTotals[st] || 0) + 1;
+      keysInDeal.add(key);
+    });
+    keysInDeal.forEach(k => { byVendor[k].dealCount++; });
+  });
+
+  const topCompetitors = Object.values(byVendor)
+    .sort((a, b) => b.dealCount - a.dealCount || b.mentions - a.mentions)
+    .slice(0, 10);
+  const competitorStatusSummary = Object.entries(statusTotals)
+    .map(([id, count]) => ({ id, label: statusLabels[id] || id, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return { topCompetitors, competitorStatusSummary, dealsWithCompetitors };
 }
 
 function escapeHtml(s) {

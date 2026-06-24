@@ -638,6 +638,40 @@ function renderPanel(m) {
       </div>
     </div>
 
+    <div class="grid grid-2" style="margin-bottom:1.5rem">
+      <div class="card">
+        <div class="card-header">Конкурентный ландшафт${m.dealsWithCompetitors ? ` <span class="muted" style="font-weight:400">(${m.dealsWithCompetitors} сделок)</span>` : ""}</div>
+        <div class="card-body">
+          ${(m.topCompetitors || []).length ? `<div class="funnel">
+            ${m.topCompetitors.map(row => {
+              const max = Math.max(1, m.topCompetitors[0]?.dealCount || 1);
+              const label = `${row.vendor || "—"}${row.product ? " · " + row.product : ""}`;
+              const topSt = Object.entries(row.statuses || {}).sort((a, b) => b[1] - a[1])[0];
+              const stLabel = topSt ? ((window.ITMEN_CONFIG?.competitorStatuses || []).find(s => s.id === topSt[0])?.label || topSt[0]) : "";
+              return `<div class="funnel-row dash-drill-row" ${dashDrill(buildDealsReportSpec({}, { type: "competitor", value: row.key }))} title="Открыть сделки с этим конкурентом">
+                <span class="name" title="${escapeHtml(row.key)}">${escapeHtml(label.length > 28 ? label.slice(0, 26) + "…" : label)}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(row.dealCount / max) * 100}%;background:#c05621"></div></div>
+                <span class="count">${row.dealCount}</span>
+                ${stLabel ? `<span class="pct" style="min-width:5rem;text-align:right"><small>${escapeHtml(stLabel)}</small></span>` : ""}
+              </div>`;
+            }).join("")}
+          </div>` : "<div class='muted'>Заполните конкурентный анализ в паспортах сделок</div>"}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Статусы по конкурентам</div>
+        <div class="card-body table-wrap">
+          <table class="dash-table">
+            <thead><tr><th>Статус</th><th>Упоминаний</th></tr></thead>
+            <tbody>${(m.competitorStatusSummary || []).map(s => `<tr>
+              <td>${escapeHtml(s.label)}</td><td class="num">${s.count}</td>
+            </tr>`).join("") || "<tr><td colspan='2' class='muted'>Нет данных</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="card" style="margin-bottom:1.5rem">
       <div class="card-header">Матрица: срок бюджета × статус</div>
       <div class="card-body">${typeof renderBudgetMatrix === "function" ? renderBudgetMatrix(m) : ""}</div>

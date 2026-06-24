@@ -39,6 +39,14 @@ function applyPresetFilter(rows, preset) {
         return label === seg;
       }));
     }
+    case "competitor": {
+      const key = preset.value;
+      if (!key) return rows;
+      return rows.filter(d => {
+        const entries = Object.values(d.techResearch?.competitorEntries || {}).flat();
+        return entries.some(e => typeof competitorEntryKey === "function" && competitorEntryKey(e) === key);
+      });
+    }
     default:
       return rows;
   }
@@ -203,6 +211,7 @@ function getDealsReportFilterSummary() {
       hotNoBudget: "Горячие без бюджета",
       overdue: "Просроченные задачи",
       segment: `Сегмент: ${dealsTablePreset.value || ""}`,
+      competitor: `Конкурент: ${dealsTablePreset.value || ""}`,
     };
     parts.push(labels[dealsTablePreset.type] || dealsTablePreset.type);
   }
