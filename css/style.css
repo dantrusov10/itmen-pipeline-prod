@@ -641,9 +641,6 @@ body.page-deals-active .deals-table-hint {
 .delta-down { color: #c53030; }
 .delta-flat { color: var(--muted); }
 .dynamics-delta-table { font-size: .82rem; }
-.budget-matrix { font-size: .78rem; }
-.budget-matrix-cell.has-data { font-weight: 600; color: var(--navy); }
-.budget-matrix th { white-space: nowrap; }
 .dash-filter-field {
   display: flex;
   flex-direction: column;
@@ -1070,7 +1067,35 @@ body.page-deals-active .deals-table-hint {
 
 .dash-table { width: 100%; font-size: .78rem; border-collapse: collapse; }
 .dash-table th, .dash-table td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); text-align: left; }
-.dash-table th { font-size: .72rem; color: var(--muted); font-weight: 600; }
+.dash-table thead th {
+  background: var(--navy);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+}
+/* Матрица: первая строка и первый столбец — белый жирный на navy */
+.budget-matrix th {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.budget-matrix thead th {
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: bottom;
+  font-size: .7rem;
+  padding: .45rem .35rem;
+}
+.budget-matrix tbody th {
+  text-align: left;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.budget-matrix { font-size: .78rem; }
+.budget-matrix-cell.has-data { font-weight: 600; color: var(--navy); }
+.budget-matrix td { background: var(--surface); color: var(--text); }
 .score-card.manual-score { border-color: #d69e2e; }
 .score-card-head .badge { margin-left: .35rem; font-size: .65rem; }
 

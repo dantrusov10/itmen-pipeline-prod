@@ -573,10 +573,26 @@ function calcMetrics(deals) {
   };
 }
 
+function normCompetitorToken(s) {
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Ключ группировки: один вендор без продукта = одна строка; иначе vendor / product */
 function competitorEntryKey(e) {
-  const vendor = String(e?.vendor || "").trim() || "—";
-  const product = String(e?.product || "").trim() || "—";
+  const vendorRaw = String(e?.vendor || "").trim();
+  const productRaw = String(e?.product || "").trim();
+  const vendor = normCompetitorToken(vendorRaw);
+  const product = normCompetitorToken(productRaw);
+  if (!vendor || vendor === "—") return "— / —";
+  if (!product || product === "—") return vendor;
   return `${vendor} / ${product}`;
+}
+
+function competitorEntryLabel(e) {
+  const vendor = String(e?.vendor || "").trim() || "—";
+  const product = String(e?.product || "").trim();
+  if (!product || product === "—") return vendor;
+  return `${vendor} · ${product}`;
 }
 
 function calcCompetitorAnalytics(all) {
@@ -594,7 +610,14 @@ function calcCompetitorAnalytics(all) {
     entries.forEach(e => {
       const key = competitorEntryKey(e);
       if (!byVendor[key]) {
-        byVendor[key] = { key, vendor: e.vendor, product: e.product, dealCount: 0, mentions: 0, statuses: {} };
+        byVendor[key] = {
+          key,
+          vendor: String(e?.vendor || "").trim() || "—",
+          product: String(e?.product || "").trim(),
+          dealCount: 0,
+          mentions: 0,
+          statuses: {},
+        };
       }
       byVendor[key].mentions++;
       const st = e.status || "unknown";

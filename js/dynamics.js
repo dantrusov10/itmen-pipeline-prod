@@ -163,9 +163,9 @@ function renderBudgetMatrix(m) {
     return `<div class="muted">Нет данных для матрицы</div>`;
   }
   return `<div class="table-wrap"><table class="dash-table budget-matrix">
-    <thead><tr><th>Срок \\ Статус</th>${statuses.map(s => `<th>${escapeHtml(s.length > 14 ? s.slice(0, 12) + "…" : s)}</th>`).join("")}</tr></thead>
+    <thead><tr><th>Срок \\ Статус</th>${statuses.map(s => `<th title="${escapeHtml(s)}">${escapeHtml(s)}</th>`).join("")}</tr></thead>
     <tbody>${periods.map(period => `<tr>
-      <th title="${escapeHtml(period)}">${escapeHtml(period.length > 18 ? period.slice(0, 16) + "…" : period)}</th>
+      <th scope="row" title="${escapeHtml(period)}">${escapeHtml(period)}</th>
       ${statuses.map(st => {
         const cnt = matrix[period]?.[st] || 0;
         const attrs = cnt ? drillRowAttrs(withDashboardFilters(buildDealsReportSpec({ budgetPeriod: [period], budgetStatus: [st] }))) : "";
