@@ -6,8 +6,8 @@
     "github": "https://github.com/dantrusov10/itmen-pipeline"
   },
   "staging": {
-    "gasUrl": "PASTE_STAGING_GAS_URL_AFTER_DEPLOY",
-    "spreadsheetId": "",
+    "gasUrl": "https://script.google.com/macros/s/AKfycbznkPIdUDj0mG8XdZ5lprz13u6r5DqqlpFj4EwOlc2vcgidwyGh2clHQv_dC2ro8WJ42w/exec",
+    "spreadsheetId": "1AbPqam0TkVdbtmyQ_KdjLGXw93qNSs4Svug8pMfP1_c",
     "pagesUrl": "https://dantrusov10.github.io/itmen-pipeline-staging/",
     "github": "https://github.com/dantrusov10/itmen-pipeline-staging"
   }

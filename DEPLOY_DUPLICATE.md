@@ -6,7 +6,7 @@
 |---|---|---|
 | **GitHub** | [itmen-pipeline](https://github.com/dantrusov10/itmen-pipeline) | [itmen-pipeline-staging](https://github.com/dantrusov10/itmen-pipeline-staging) |
 | **GitHub Pages** | https://dantrusov10.github.io/itmen-pipeline/ | https://dantrusov10.github.io/itmen-pipeline-staging/ |
-| **Google Таблица** | `1pN937eK0xg4svGMHCdBfUhr3iAihuDl_fkj8U_XrL2g` | копия (см. ниже) |
+| **Google Таблица** | `1pN937eK0xg4svGMHCdBfUhr3iAihuDl_fkj8U_XrL2g` | `1AbPqam0TkVdbtmyQ_KdjLGXw93qNSs4Svug8pMfP1_c` |
 | **GAS** | свой URL в `gas-config.js` | свой URL в `gas-config.js` |
 | **Кто работает** | менеджеры | только разработка |
 
