@@ -32,6 +32,8 @@ const { listViews, saveView, deleteView } = require("./views");
 const { listPresets, savePreset, deletePreset, runReport, ENTITY_FIELDS } = require("./reports");
 const { globalSearch, findDuplicates } = require("./search");
 const { archiveDeal, unarchiveDeal, transferDeal, bulkDeals } = require("./deal-ops");
+const { listScoringCriteria, saveScoringCriteria } = require("./scoring");
+const { getKanbanConfig, saveKanbanConfig } = require("./kanban-config");
 
 const app = express();
 const PORT = Number(process.env.API_PORT || 3010);
@@ -342,9 +344,58 @@ app.put("/api/deals/:dealId/info", requireAuth(), async (req, res) => {
 
 app.get("/api/calendar/tasks", requireAuth(), async (req, res) => {
   try {
-    const assignee = req.query.mine === "1" ? req.user.managerName : req.query.assignee;
+    let assignee = "";
+    if (req.user.role === "admin") {
+      if (req.query.mine === "1") assignee = req.user.managerName;
+      else if (req.query.assignee) assignee = String(req.query.assignee);
+    } else {
+      assignee = req.user.managerName;
+    }
     const items = await listAllTasks({ assignee, from: req.query.from, to: req.query.to });
     res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/kanban/config", requireAuth(), async (_req, res) => {
+  try {
+    res.json(await getKanbanConfig());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/kanban/config", requireAuth(), requireAdmin, async (req, res) => {
+  try {
+    const data = await saveKanbanConfig(req.body?.stages || []);
+    res.json({ ok: true, ...data });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/scoring", requireAuth(), requireAdmin, async (_req, res) => {
+  try {
+    res.json({ items: await listScoringCriteria() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/admin/scoring", requireAuth(), requireAdmin, async (req, res) => {
+  try {
+    const items = await saveScoringCriteria(req.body?.items || []);
+    res.json({ ok: true, items });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get("/api/profile/avatars", requireAuth(), async (_req, res) => {
+  try {
+    const { listAvatarsByManager } = require("./users");
+    res.json({ map: await listAvatarsByManager() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

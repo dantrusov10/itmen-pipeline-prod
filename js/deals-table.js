@@ -76,7 +76,8 @@ const DEALS_TABLE_COLS = [
     filterOptions: deals => resolveOwnerFilterOptions(deals),
     get: d => d.owner,
     render(d) {
-      return `<td>${escapeHtml(d.owner)}</td>`;
+      const av = typeof ownerAvatarHtml === "function" ? ownerAvatarHtml(d.owner) : "";
+      return `<td class="col-owner"><span class="owner-cell">${av}${escapeHtml(d.owner)}</span></td>`;
     },
   },
   {
@@ -1094,3 +1095,24 @@ function renderDealsTable(deals) {
   renderDealsFilterBanner();
   requestAnimationFrame(syncDealsTableHeadHeight);
 }
+
+window.ITMEN_AVATARS = {};
+
+async function loadManagerAvatars() {
+  if (window.ITMEN_API?.backend !== "pocketbase" || typeof apiLoadAvatars !== "function") return;
+  try {
+    const { map } = await apiLoadAvatars();
+    window.ITMEN_AVATARS = map || {};
+  } catch (e) {
+    console.warn("avatars:", e);
+  }
+}
+
+function ownerAvatarHtml(name) {
+  const url = window.ITMEN_AVATARS?.[name];
+  if (!url) return `<span class="owner-avatar owner-avatar-ph" aria-hidden="true"></span>`;
+  return `<img src="${escapeHtml(url)}" class="owner-avatar" alt="" loading="lazy">`;
+}
+
+window.loadManagerAvatars = loadManagerAvatars;
+window.ownerAvatarHtml = ownerAvatarHtml;

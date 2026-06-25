@@ -971,7 +971,45 @@ function renderPanel(m) {
 function renderScoring() {
   const el = document.getElementById("page-scoring");
   if (!el) return;
+  const admin = typeof isAdmin === "function" && isAdmin();
   const items = getMergedScoringItems(state.scoring);
+  if (admin) {
+    el.innerHTML = `
+      <div class="card"><div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3 style="margin:0">Модель скоринга</h3>
+          <button type="button" class="btn btn-primary btn-sm" id="scoring-save">Сохранить изменения</button>
+        </div>
+        <p class="muted">Редактирование критериев, весов, столбцов и шкал (только админ)</p>
+        <div class="table-wrap"><table class="rubric-table scoring-edit-table">
+          <thead><tr><th>Критерий</th><th>Вопрос</th><th>Кол.</th><th>Вес %</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th><th>0</th><th>Ответственный</th></tr></thead>
+          <tbody>${items.map((s, i) => {
+            const scale = buildScoreScale(s);
+            return `<tr data-idx="${i}" data-key="${escapeHtml(s.key)}">
+              <td><input class="sc-name" value="${escapeHtml(s.name)}"></td>
+              <td><input class="sc-question" value="${escapeHtml(s.question || "")}" style="min-width:160px"></td>
+              <td><input class="sc-col" value="${escapeHtml(s.col || "")}" style="width:4rem"></td>
+              <td><input type="number" class="sc-weight" value="${Math.round((s.weight || 0) * 100)}" min="0" max="100" style="width:4rem"></td>
+              <td><input class="sc-s5" value="${escapeHtml(scale[5] || "")}"></td>
+              <td><input class="sc-s4" value="${escapeHtml(scale[4] || "")}"></td>
+              <td><input class="sc-s3" value="${escapeHtml(scale[3] || "")}"></td>
+              <td><input class="sc-s2" value="${escapeHtml(scale[2] || "")}"></td>
+              <td><input class="sc-s1" value="${escapeHtml(scale[1] || "")}"></td>
+              <td><input class="sc-s0" value="${escapeHtml(s.s0 || "")}"></td>
+              <td><input class="sc-owner" value="${escapeHtml(s.owner || "")}"></td>
+            </tr>`;
+          }).join("")}
+          </tbody>
+        </table></div>
+      </div></div>
+      <div class="section-title">Пороги категорий</div>
+      <div class="grid grid-4">
+        ${[["Горячая", "≥ 80", "badge-hot"], ["Тёплая", "≥ 60", "badge-warm"], ["Наблюдение", "≥ 40", "badge-watch"], ["Отказ", "< 40", "badge-drop"]]
+          .map(([n, t, c]) => `<div class="metric-card"><span class="badge ${c}">${n}</span><div class="value" style="font-size:1rem;margin-top:.5rem">${t}</div></div>`).join("")}
+      </div>`;
+    document.getElementById("scoring-save").onclick = saveScoringFromTable;
+    return;
+  }
   const legendBlocks = items.map(s => {
     const scale = buildScoreScale(s);
     return `<div class="score-legend-block">
@@ -1006,6 +1044,33 @@ function renderScoring() {
       ${[["Горячая", "≥ 80", "badge-hot"], ["Тёплая", "≥ 60", "badge-warm"], ["Наблюдение", "≥ 40", "badge-watch"], ["Отказ", "< 40", "badge-drop"]]
         .map(([n, t, c]) => `<div class="metric-card"><span class="badge ${c}">${n}</span><div class="value" style="font-size:1rem;margin-top:.5rem">${t}</div></div>`).join("")}
     </div>`;
+}
+
+async function saveScoringFromTable() {
+  const rows = [...document.querySelectorAll(".scoring-edit-table tbody tr")];
+  const items = rows.map(tr => ({
+    key: tr.dataset.key,
+    name: tr.querySelector(".sc-name")?.value || "",
+    question: tr.querySelector(".sc-question")?.value || "",
+    col: tr.querySelector(".sc-col")?.value || "—",
+    weight: (Number(tr.querySelector(".sc-weight")?.value) || 0) / 100,
+    owner: tr.querySelector(".sc-owner")?.value || "—",
+    s5: tr.querySelector(".sc-s5")?.value || "",
+    s4: tr.querySelector(".sc-s4")?.value || "",
+    s3: tr.querySelector(".sc-s3")?.value || "",
+    s2: tr.querySelector(".sc-s2")?.value || "",
+    s1: tr.querySelector(".sc-s1")?.value || "",
+    s0: tr.querySelector(".sc-s0")?.value || "",
+  }));
+  try {
+    const res = await apiSaveScoring(items);
+    state.scoring = (res.items || []).map(({ key, sortOrder, manualOnly, ...rest }) => rest);
+    persistStateCache(state);
+    showToast("Модель скоринга сохранена");
+    renderScoring();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 function previewDealId() {
@@ -1276,6 +1341,7 @@ async function openDealModalAsync(idx) {
     applyDealModalReadOnly(editable);
     dealModalTab = "passport";
     if (typeof renderDealModalTabs === "function") renderDealModalTabs();
+    if (typeof storeDealPassportHtml === "function") storeDealPassportHtml();
     if (editable && isNew && window.ITMEN_AUTH?.user?.managerName) {
       const ownerEl = document.getElementById("f-owner");
       if (ownerEl && !ownerEl.value) ownerEl.value = window.ITMEN_AUTH.user.managerName;
@@ -1623,6 +1689,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.ITMEN_API?.enabled) {
     try {
       await bootstrapPipelineFromServer();
+      if (typeof loadManagerAvatars === "function") await loadManagerAvatars();
     } catch (e) {
       console.error(e);
       if (window.ITMEN_API?.backend === "pocketbase") {

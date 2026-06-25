@@ -133,6 +133,19 @@ async function deleteUser(userId) {
   return { ok: true };
 }
 
+async function listAvatarsByManager() {
+  const users = await listAll("pipeline_users");
+  const profiles = await listAll("user_profiles");
+  const map = {};
+  users.forEach(u => {
+    const name = u.manager_name || u.display_name || "";
+    if (!name) return;
+    const prof = profiles.find(p => p.user_id === u.id);
+    map[name] = prof?.avatar ? `/api/profile/avatar/${u.id}` : "";
+  });
+  return map;
+}
+
 module.exports = {
   getOrCreateProfile,
   updateProfile,
@@ -142,4 +155,5 @@ module.exports = {
   createUser,
   updateUser,
   deleteUser,
+  listAvatarsByManager,
 };

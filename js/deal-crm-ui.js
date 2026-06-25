@@ -1,15 +1,20 @@
 /* Вкладки CRM в модалке сделки */
 let dealCrmCache = {};
 let dealModalTab = "passport";
+let dealPassportHtml = "";
 
 const DEAL_TABS = [
   { id: "passport", label: "Паспорт" },
-  { id: "feed", label: "Лента" },
-  { id: "tasks", label: "Задачи" },
+  { id: "events", label: "События" },
   { id: "files", label: "Файлы" },
-  { id: "contacts", label: "Контакты" },
   { id: "info", label: "Общая информация" },
+  { id: "contacts", label: "Контакты" },
 ];
+
+function storeDealPassportHtml() {
+  const body = document.querySelector("#deal-modal .modal-body");
+  if (body) dealPassportHtml = body.innerHTML;
+}
 
 function renderDealModalTabs() {
   const modal = document.getElementById("deal-modal");
@@ -28,15 +33,30 @@ function renderDealModalTabs() {
   });
 }
 
+function restorePassportTab() {
+  const body = document.querySelector("#deal-modal .modal-body");
+  if (!body || !dealPassportHtml) return;
+  body.innerHTML = dealPassportHtml;
+  if (typeof toggleBudgetPlannedDate === "function") toggleBudgetPlannedDate();
+  if (typeof toggleLossReasonField === "function") toggleLossReasonField();
+  const idx = editingDealIdx;
+  const editable = idx == null ? true : canEditDeal(state.deals[idx]);
+  if (typeof applyDealModalReadOnly === "function") applyDealModalReadOnly(editable);
+}
+
 async function switchDealTab(tab) {
+  const body = document.querySelector("#deal-modal .modal-body");
+  if (dealModalTab === "passport" && body) storeDealPassportHtml();
   dealModalTab = tab;
   renderDealModalTabs();
-  const body = document.querySelector("#deal-modal .modal-body");
   if (!body) return;
-  if (tab === "passport") return;
+  if (tab === "passport") {
+    restorePassportTab();
+    return;
+  }
   const dealId = document.getElementById("f-id")?.value;
   if (!dealId) {
-    body.innerHTML = `<p class="muted">Сначала сохраните сделку</p>`;
+    body.innerHTML = `<p class="muted">Сначала сохраните сделку, чтобы открыть вкладку «${escapeHtml(DEAL_TABS.find(t => t.id === tab)?.label || tab)}»</p>`;
     return;
   }
   body.innerHTML = `<p class="muted">Загрузка…</p>`;
@@ -45,8 +65,7 @@ async function switchDealTab(tab) {
       dealCrmCache[dealId] = await apiLoadDealCrm(dealId);
     }
     const crm = dealCrmCache[dealId];
-    if (tab === "feed") body.innerHTML = renderFeedTab(dealId, crm);
-    else if (tab === "tasks") body.innerHTML = renderTasksTab(dealId, crm);
+    if (tab === "events") body.innerHTML = renderEventsTab(dealId, crm);
     else if (tab === "files") body.innerHTML = renderFilesTab(dealId, crm);
     else if (tab === "contacts") body.innerHTML = renderContactsTab(dealId, crm);
     else if (tab === "info") body.innerHTML = renderInfoTab(dealId, crm);
@@ -64,44 +83,54 @@ function activityIcon(type) {
   return m[type] || "•";
 }
 
-function renderFeedTab(dealId, crm) {
+function dealTabCanEdit() {
+  return editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
+}
+
+function renderEventsTab(dealId, crm) {
   const items = (crm.activities || []).map(a => `
     <div class="feed-item feed-${a.type}">
       <div class="feed-meta">${activityIcon(a.type)} <strong>${escapeHtml(a.author || "—")}</strong>
         <span class="muted">${escapeHtml((a.at || "").slice(0, 16).replace("T", " "))}</span></div>
       <div class="feed-body">${escapeHtml(a.body || "")}</div>
     </div>`).join("");
-  const canEdit = editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
-  return `
-    <div class="feed-list">${items || "<p class='muted'>Пока нет событий</p>"}</div>
-    ${canEdit ? `<div class="feed-compose">
-      <textarea id="feed-comment" rows="3" placeholder="Комментарий или ключевой артефакт…"></textarea>
-      <button type="button" class="btn btn-primary btn-sm" id="feed-send">Добавить</button>
-    </div>` : ""}`;
-}
-
-function renderTasksTab(dealId, crm) {
-  const canEdit = editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
-  const rows = (crm.tasks || []).map(t => `
+  const canEdit = dealTabCanEdit();
+  const tasks = (crm.tasks || []).map(t => `
     <div class="task-row" data-id="${t.id}">
       <label><input type="checkbox" class="task-done-cb" ${t.status === "done" ? "checked" : ""} ${canEdit ? "" : "disabled"}>
         <span class="${t.status === "done" ? "done" : ""}">${escapeHtml(t.title)}</span></label>
-      <span class="muted">${escapeHtml(t.dueAt ? t.dueAt.slice(0, 10) : "—")} · ${escapeHtml(t.assignee || "—")}</span>
+      <span class="muted">${escapeHtml(t.dueAt ? t.dueAt.slice(0, 16).replace("T", " ") : "—")} · ${escapeHtml(t.assignee || "—")}</span>
       ${canEdit ? `<button type="button" class="btn btn-sm task-del">✕</button>` : ""}
     </div>`).join("");
   return `
-    <div class="task-list">${rows || "<p class='muted'>Нет задач</p>"}</div>
-    ${canEdit ? `<div class="task-form">
-      <input id="task-title" placeholder="Задача / напоминание">
-      <input type="date" id="task-due">
-      <select id="task-assignee">${(state.lists?.owners || []).map(o =>
-        `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}</select>
-      <button type="button" class="btn btn-primary btn-sm" id="task-add">Добавить</button>
-    </div>` : ""}`;
+    <div class="events-layout">
+      <div class="form-section-title">Лента событий</div>
+      <div class="feed-list">${items || "<p class='muted'>Пока нет событий</p>"}</div>
+      ${canEdit ? `<div class="feed-compose">
+        <textarea id="feed-comment" rows="3" placeholder="Комментарий…"></textarea>
+        <button type="button" class="btn btn-primary btn-sm" id="feed-send">Добавить комментарий</button>
+      </div>` : ""}
+      <div class="form-section-title" style="margin-top:1.25rem">Задачи</div>
+      <div class="task-list">${tasks || "<p class='muted'>Нет задач</p>"}</div>
+      ${canEdit ? `<div class="task-form">
+        <input id="task-title" placeholder="Задача / напоминание">
+        <input type="datetime-local" id="task-due">
+        <select id="task-assignee">${(state.lists?.owners || []).map(o =>
+          `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}</select>
+        <button type="button" class="btn btn-primary btn-sm" id="task-add">Добавить задачу</button>
+      </div>` : ""}
+      <div class="form-section-title" style="margin-top:1.25rem">Прикрепить файл</div>
+      <p class="muted" style="font-size:.8rem">Файлы сохраняются во вкладке «Файлы»</p>
+      ${canEdit ? `<div class="file-form">
+        <select id="event-file-label"><option>ТЗ</option><option>КП</option><option>Договор</option><option>Прочее</option></select>
+        <input type="file" id="event-file-input">
+        <button type="button" class="btn btn-primary btn-sm" id="event-file-upload">Загрузить</button>
+      </div>` : ""}
+    </div>`;
 }
 
 function renderFilesTab(dealId, crm) {
-  const canEdit = editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
+  const canEdit = dealTabCanEdit();
   const rows = (crm.files || []).map(f => `
     <div class="file-row">
       <a href="${escapeHtml(f.url)}" target="_blank" rel="noopener">${escapeHtml(f.originalName || f.label)}</a>
@@ -119,7 +148,7 @@ function renderFilesTab(dealId, crm) {
 
 function renderContactsTab(dealId, crm) {
   const contacts = crm.contacts?.length ? crm.contacts : [{ name: "", email: "", phone: "", role: "" }];
-  const canEdit = editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
+  const canEdit = dealTabCanEdit();
   const rows = contacts.map((c, i) => `
     <div class="contact-row" data-i="${i}">
       <input class="c-name" value="${escapeHtml(c.name)}" placeholder="ФИО" ${canEdit ? "" : "disabled"}>
@@ -135,10 +164,10 @@ function renderContactsTab(dealId, crm) {
 
 function renderInfoTab(dealId, crm) {
   const i = crm.info || {};
-  const canEdit = editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
+  const canEdit = dealTabCanEdit();
   const dis = canEdit ? "" : "disabled";
   return `
-    <div class="form-section"><div class="form-section-title">Юридическое лицо</div>
+    <div class="form-section"><div class="form-section-title">Общая информация по клиенту</div>
       <div class="form-grid">
         <div><label>Название ЮЛ</label><input id="info-company" value="${escapeHtml(i.companyName)}" ${dis}></div>
         <div><label>ИНН</label><input id="info-inn" value="${escapeHtml(i.companyInn)}" ${dis}></div>
@@ -186,28 +215,29 @@ function collectInfoFromDom() {
 }
 
 function bindDealCrmTabEvents(dealId, tab) {
-  if (tab === "feed") {
+  if (tab === "events") {
     document.getElementById("feed-send")?.addEventListener("click", async () => {
       const body = document.getElementById("feed-comment")?.value?.trim();
       if (!body) return;
       await apiPostComment(dealId, body);
       delete dealCrmCache[dealId];
-      await switchDealTab("feed");
+      await switchDealTab("events");
       showToast("Комментарий добавлен");
     });
-  }
-  if (tab === "tasks") {
     document.getElementById("task-add")?.addEventListener("click", async () => {
       const title = document.getElementById("task-title")?.value?.trim();
       if (!title) return;
+      let dueAt = document.getElementById("task-due")?.value || null;
+      if (dueAt && dueAt.length === 16) dueAt += ":00";
       await apiSaveTask(dealId, {
         title,
-        dueAt: document.getElementById("task-due")?.value || null,
+        dueAt,
         assignee: document.getElementById("task-assignee")?.value || "",
         status: "open",
       });
       delete dealCrmCache[dealId];
-      await switchDealTab("tasks");
+      await switchDealTab("events");
+      showToast("Задача добавлена");
     });
     document.querySelectorAll(".task-done-cb").forEach(cb => {
       cb.onchange = async () => {
@@ -216,7 +246,7 @@ function bindDealCrmTabEvents(dealId, tab) {
         if (!task) return;
         await apiSaveTask(dealId, { ...task, status: cb.checked ? "done" : "open", doneAt: cb.checked ? new Date().toISOString() : null });
         delete dealCrmCache[dealId];
-        await switchDealTab("tasks");
+        await switchDealTab("events");
       };
     });
     document.querySelectorAll(".task-del").forEach(btn => {
@@ -225,8 +255,16 @@ function bindDealCrmTabEvents(dealId, tab) {
         if (!id || !confirm("Удалить задачу?")) return;
         await apiDeleteTask(dealId, id);
         delete dealCrmCache[dealId];
-        await switchDealTab("tasks");
+        await switchDealTab("events");
       };
+    });
+    document.getElementById("event-file-upload")?.addEventListener("click", async () => {
+      const f = document.getElementById("event-file-input")?.files?.[0];
+      if (!f) return alert("Выберите файл");
+      await apiUploadDealFile(dealId, f, document.getElementById("event-file-label")?.value);
+      delete dealCrmCache[dealId];
+      await switchDealTab("events");
+      showToast("Файл загружен — см. вкладку «Файлы»");
     });
   }
   if (tab === "files") {
@@ -274,5 +312,6 @@ function invalidateDealCrmCache(dealId) {
 
 window.renderDealModalTabs = renderDealModalTabs;
 window.switchDealTab = switchDealTab;
+window.storeDealPassportHtml = storeDealPassportHtml;
 window.invalidateDealCrmCache = invalidateDealCrmCache;
 window.dealModalTab = () => dealModalTab;

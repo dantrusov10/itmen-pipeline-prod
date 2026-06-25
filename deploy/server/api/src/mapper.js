@@ -43,6 +43,7 @@ function scoringFromRows(rows) {
       weight: r.weight,
       col: r.col,
       owner: r.owner,
+      question: r.question || "",
       s5: r.rubric_s5,
       s4: r.rubric_s4,
       s3: r.rubric_s3,

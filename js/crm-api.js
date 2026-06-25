@@ -158,6 +158,22 @@ async function apiRunReport(spec) {
   return crmFetch("/api/reports/run", { method: "POST", body: spec });
 }
 
+async function apiKanbanConfig() {
+  return crmFetch("/api/kanban/config");
+}
+
+async function apiSaveKanbanConfig(stages) {
+  return crmFetch("/api/kanban/config", { method: "PUT", body: { stages } });
+}
+
+async function apiSaveScoring(items) {
+  return crmFetch("/api/admin/scoring", { method: "PUT", body: { items } });
+}
+
+async function apiLoadAvatars() {
+  return crmFetch("/api/profile/avatars");
+}
+
 window.apiLoadDealCrm = apiLoadDealCrm;
 window.apiPostComment = apiPostComment;
 window.apiSaveTask = apiSaveTask;
@@ -187,3 +203,7 @@ window.apiReportEntities = apiReportEntities;
 window.apiListReportPresets = apiListReportPresets;
 window.apiSaveReportPreset = apiSaveReportPreset;
 window.apiRunReport = apiRunReport;
+window.apiKanbanConfig = apiKanbanConfig;
+window.apiSaveKanbanConfig = apiSaveKanbanConfig;
+window.apiSaveScoring = apiSaveScoring;
+window.apiLoadAvatars = apiLoadAvatars;

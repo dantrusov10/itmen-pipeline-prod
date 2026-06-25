@@ -1295,7 +1295,39 @@ body.page-deals-active .deals-table-hint {
 .contact-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-bottom: .5rem; }
 .kanban-board { display: flex; gap: .75rem; overflow-x: auto; padding-bottom: 1rem; }
 .kanban-col { min-width: 240px; max-width: 280px; background: #f1f5f9; border-radius: var(--radius); }
-.kanban-col-head { padding: .6rem .75rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); }
+.kanban-col-head { padding: .6rem .75rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+.kanban-col-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.kanban-col-sum { font-size: .72rem; font-weight: 500; }
+.kanban-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.kanban-search { min-width: 200px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; }
+.kanban-filter { min-width: 120px; max-width: 180px; font-size: .82rem; }
+.kanban-config-panel { margin-top: 1rem; }
+.kanban-config-list { list-style: none; padding: 0; margin: .5rem 0; }
+.kanban-config-list li { display: flex; align-items: center; gap: .5rem; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: .35rem; background: #fff; cursor: grab; }
+.kanban-config-list li.hidden-col { opacity: .65; }
+.drag-handle { cursor: grab; color: var(--muted); }
+.owner-cell { display: inline-flex; align-items: center; gap: .35rem; }
+.owner-inline { display: inline-flex; align-items: center; gap: .25rem; }
+.owner-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid #e2e8f0; }
+.owner-avatar-ph { display: inline-block; background: #e2e8f0; }
+.events-layout { max-height: 70vh; overflow-y: auto; }
+.scoring-edit-table input { width: 100%; font-size: .78rem; padding: .2rem .35rem; border: 1px solid var(--border); border-radius: 4px; }
+.calendar-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.cal-view-toggle { margin-left: auto; display: flex; gap: .25rem; }
+.cal-assignee-select { min-width: 160px; font-size: .85rem; }
+.cal-week-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.cal-week-grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); min-width: 720px; }
+.cal-week-corner { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); background: #f8fafc; }
+.cal-week-dayhead { text-align: center; padding: .5rem; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); background: #f8fafc; }
+.cal-week-dayhead.today { background: #dbeafe; }
+.cal-dow { display: block; font-size: .72rem; color: var(--muted); text-transform: uppercase; }
+.cal-dom { font-weight: 700; font-size: 1.1rem; }
+.cal-time-label { font-size: .72rem; color: var(--muted); text-align: right; padding: .25rem .35rem; border-right: 1px solid var(--border); border-bottom: 1px solid #eee; background: #fafafa; }
+.cal-slot { min-height: 44px; border-right: 1px solid #eee; border-bottom: 1px solid #eee; padding: 2px; position: relative; }
+.cal-event { background: #2563eb; color: #fff; border-radius: 4px; padding: 2px 4px; font-size: .68rem; margin-bottom: 2px; cursor: pointer; line-height: 1.2; }
+.cal-event-time { font-weight: 600; margin-right: 4px; }
+.cal-event-sub { display: block; opacity: .85; font-size: .62rem; }
+.profile-avatar-wrap { display: flex; align-items: center; gap: 1rem; margin: .75rem 0; }
 .kanban-col-body { min-height: 120px; padding: .5rem; }
 .kanban-col-body.drag-over { background: #e0f2fe; }
 .kanban-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: .6rem; margin-bottom: .5rem; cursor: grab; box-shadow: var(--shadow); }

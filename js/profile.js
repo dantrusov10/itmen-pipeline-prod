@@ -20,7 +20,7 @@ async function renderProfileSelf() {
     box.innerHTML = `
       <h3>Личный кабинет</h3>
       <p class="muted">${escapeHtml(u.displayName || u.email)} · ${u.role === "admin" ? "админ" : "менеджер"}</p>
-      ${profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt="">` : ""}
+      ${profile.avatarUrl ? `<div class="profile-avatar-wrap"><img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt=""></div>` : `<div class="profile-avatar-wrap"><span class="owner-avatar owner-avatar-ph" style="width:72px;height:72px"></span></div>`}
       <div class="form-grid" style="margin-top:1rem">
         <div><label>Телефон</label><input id="prof-phone" value="${escapeHtml(profile.phone)}"></div>
       </div>
@@ -31,7 +31,7 @@ async function renderProfileSelf() {
         <label><input type="checkbox" id="prof-notify-comment" ${profile.notifyComments ? "checked" : ""}> Комментарии</label>
       </div>
       <div style="margin-top:1rem">
-        <label>Аватар</label><input type="file" id="prof-avatar" accept="image/*">
+        <label>Аватар (JPG/PNG, до 5 МБ)</label><input type="file" id="prof-avatar" accept="image/*">
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="prof-save" style="margin-top:1rem">Сохранить настройки</button>
       <hr style="margin:1.5rem 0">
@@ -52,6 +52,7 @@ async function renderProfileSelf() {
       const f = document.getElementById("prof-avatar")?.files?.[0];
       if (f) await apiUploadAvatar(f);
       showToast("Профиль сохранён");
+      if (typeof loadManagerAvatars === "function") await loadManagerAvatars();
       renderProfileSelf();
     };
     document.getElementById("pwd-save").onclick = async () => {

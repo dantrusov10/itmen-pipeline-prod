@@ -14,9 +14,11 @@ async function renderReports() {
 async function renderReportBuilder() {
   const box = document.getElementById("reports-builder");
   if (!box) return;
-  const { entities } = await apiReportEntities();
-  const { items: presets } = await apiListReportPresets();
-  const fields = entities[reportState.entity] || [];
+  try {
+    const { entities } = await apiReportEntities();
+    const { items: presets } = await apiListReportPresets();
+    const presetList = presets || [];
+    const fields = entities?.[reportState.entity] || [];
   box.innerHTML = `
     <h3>Конструктор отчётов</h3>
     <div class="form-grid">
@@ -44,7 +46,7 @@ async function renderReportBuilder() {
       <button type="button" class="btn btn-sm" id="rep-save">Сохранить пресет</button>
     </div>
     <div style="margin-top:1rem"><label>Пресеты</label>
-      ${presets.map(p => `<button type="button" class="btn btn-sm rep-preset" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join(" ") || "<span class='muted'>нет</span>"}
+      ${presetList.map(p => `<button type="button" class="btn btn-sm rep-preset" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join(" ") || "<span class='muted'>нет</span>"}
     </div>`;
   document.getElementById("rep-entity").onchange = e => {
     reportState.entity = e.target.value;
@@ -67,7 +69,7 @@ async function renderReportBuilder() {
   };
   box.querySelectorAll(".rep-preset").forEach(btn => {
     btn.onclick = async () => {
-      const p = presets.find(x => x.id === btn.dataset.id);
+      const p = presetList.find(x => x.id === btn.dataset.id);
       if (!p) return;
       reportState.entity = p.entity;
       reportState.groupBy = p.groupBy;
@@ -80,6 +82,10 @@ async function renderReportBuilder() {
       runCurrentReport();
     };
   });
+  } catch (e) {
+    box.innerHTML = `<h3>Конструктор отчётов</h3><p class="muted" style="color:#b45309">Ошибка загрузки: ${escapeHtml(e.message)}</p>
+      <button type="button" class="btn btn-sm" onclick="renderReportBuilder()">Повторить</button>`;
+  }
 }
 
 async function runCurrentReport() {
