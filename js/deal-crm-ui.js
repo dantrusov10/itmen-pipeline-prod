@@ -17,20 +17,21 @@ function storeDealPassportHtml() {
 }
 
 function renderDealModalTabs() {
-  const modal = document.getElementById("deal-modal");
-  if (!modal) return;
-  let bar = modal.querySelector(".deal-tabs");
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.className = "deal-tabs";
-    modal.querySelector(".modal-header")?.after(bar);
-  }
+  const bar = document.getElementById("deal-tabs");
+  const wrap = document.getElementById("deal-tabs-wrap");
+  if (!bar) return;
+  if (wrap) wrap.hidden = false;
   bar.innerHTML = DEAL_TABS.map(t =>
-    `<button type="button" class="deal-tab${dealModalTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
+    `<button type="button" class="deal-tab${dealModalTab === t.id ? " active" : ""}" data-tab="${t.id}" role="tab">${t.label}</button>`
   ).join("");
   bar.querySelectorAll(".deal-tab").forEach(btn => {
     btn.onclick = () => switchDealTab(btn.dataset.tab);
   });
+}
+
+function hideDealModalTabs() {
+  const wrap = document.getElementById("deal-tabs-wrap");
+  if (wrap) wrap.hidden = true;
 }
 
 function restorePassportTab() {
@@ -311,6 +312,7 @@ function invalidateDealCrmCache(dealId) {
 }
 
 window.renderDealModalTabs = renderDealModalTabs;
+window.hideDealModalTabs = hideDealModalTabs;
 window.switchDealTab = switchDealTab;
 window.storeDealPassportHtml = storeDealPassportHtml;
 window.invalidateDealCrmCache = invalidateDealCrmCache;

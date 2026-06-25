@@ -1116,3 +1116,42 @@ function ownerAvatarHtml(name) {
 
 window.loadManagerAvatars = loadManagerAvatars;
 window.ownerAvatarHtml = ownerAvatarHtml;
+
+function getKanbanFilterCols() {
+  return DEALS_TABLE_COLS;
+}
+
+function getDistinctDealColValues(col, deals) {
+  const rows = (deals || []).map(d => (typeof enrichDeal === "function" ? enrichDeal(d) : d));
+  if (typeof col.filterOptions === "function") {
+    return col.filterOptions(rows);
+  }
+  const vals = new Set();
+  rows.forEach(d => {
+    const t = dealCellText(col, d);
+    vals.add(t || "—");
+  });
+  return [...vals].sort((a, b) => String(a).localeCompare(String(b), "ru"));
+}
+
+function dealMatchesKanbanFilters(d, filters) {
+  const enriched = typeof enrichDeal === "function" ? enrichDeal(d) : d;
+  const q = (filters.q || "").trim().toLowerCase();
+  if (q) {
+    const hay = `${enriched.customer || ""} ${enriched.id || ""} ${enriched.owner || ""}`.toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  const fields = filters.fields || {};
+  for (const [key, selected] of Object.entries(fields)) {
+    if (!selected?.length) continue;
+    const col = DEALS_TABLE_COLS.find(c => c.key === key);
+    if (!col) continue;
+    const text = dealCellText(col, enriched) || "—";
+    if (!selected.includes(text)) return false;
+  }
+  return true;
+}
+
+window.getKanbanFilterCols = getKanbanFilterCols;
+window.getDistinctDealColValues = getDistinctDealColValues;
+window.dealMatchesKanbanFilters = dealMatchesKanbanFilters;

@@ -1,6 +1,8 @@
 /* Канбан по стадиям */
 let kanbanStages = null;
-let kanbanFilters = { q: "", owners: [], categories: [] };
+let kanbanFilters = { q: "", fields: {} };
+let kanbanFilterDraft = { field: "", values: [] };
+let kanbanFilterPanelOpen = false;
 
 async function loadKanbanStages() {
   const all = typeof pipelineStageOptions === "function"
@@ -11,21 +13,20 @@ async function loadKanbanStages() {
     if (Array.isArray(stages) && stages.length) {
       return stages.filter(s => all.includes(s));
     }
-  } catch (_) { /* offline / gas */ }
+  } catch (_) { /* offline */ }
   return all;
 }
 
 function kanbanFilteredDeals() {
-  const deals = (state?.deals || []).map(enrichDeal).filter(d => !d.archived);
-  const q = (kanbanFilters.q || "").trim().toLowerCase();
-  const owners = kanbanFilters.owners || [];
-  const cats = kanbanFilters.categories || [];
-  return deals.filter(d => {
-    if (q && !(d.customer || "").toLowerCase().includes(q) && !(d.id || "").toLowerCase().includes(q)) return false;
-    if (owners.length && !owners.includes(d.owner)) return false;
-    if (cats.length && !cats.includes(d.category)) return false;
-    return true;
-  });
+  const deals = (state?.deals || []).filter(d => !d.archived);
+  if (typeof dealMatchesKanbanFilters === "function") {
+    return deals.filter(d => dealMatchesKanbanFilters(d, kanbanFilters));
+  }
+  return deals;
+}
+
+function kanbanActiveFilterCount() {
+  return Object.values(kanbanFilters.fields || {}).filter(v => v?.length).length;
 }
 
 function kanbanColSummary(col) {
@@ -34,28 +35,168 @@ function kanbanColSummary(col) {
   return { count, sum };
 }
 
+function renderKanbanFilterChips() {
+  const fields = kanbanFilters.fields || {};
+  const cols = typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+  const chips = [];
+  for (const [key, vals] of Object.entries(fields)) {
+    if (!vals?.length) continue;
+    const label = cols.find(c => c.key === key)?.label || key;
+    chips.push(`<span class="kanban-filter-chip" data-field="${escapeHtml(key)}">${escapeHtml(label)}: ${vals.length} <button type="button" class="kanban-chip-x" data-field="${escapeHtml(key)}">✕</button></span>`);
+  }
+  return chips.join("") || `<span class="muted">Фильтры не заданы</span>`;
+}
+
+function renderKanbanFilterPanel() {
+  const cols = typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+  const deals = (state?.deals || []).filter(d => !d.archived);
+  const field = kanbanFilterDraft.field || cols[0]?.key || "";
+  const col = cols.find(c => c.key === field);
+  const options = col && typeof getDistinctDealColValues === "function"
+    ? getDistinctDealColValues(col, deals)
+    : [];
+  const selected = new Set(kanbanFilterDraft.values || []);
+
+  return `<div class="kanban-filter-panel card" id="kanban-filter-panel">
+    <div class="card-body">
+      <h4>Фильтры канбана</h4>
+      <p class="muted">Выберите поле сделки, отметьте значения и нажмите «Показать»</p>
+      <div class="kanban-filter-steps">
+        <div class="kanban-filter-step">
+          <label>Поле</label>
+          <select id="kanban-filter-field">${cols.map(c =>
+            `<option value="${c.key}"${field === c.key ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="kanban-filter-step kanban-filter-values">
+          <label>Значения <span class="muted">(${options.length})</span></label>
+          <div class="kanban-filter-ms-actions">
+            <button type="button" class="btn btn-sm" id="kanban-ms-all">Все</button>
+            <button type="button" class="btn btn-sm" id="kanban-ms-none">Снять</button>
+          </div>
+          <div class="kanban-filter-ms-list" id="kanban-filter-ms-list">
+            ${options.map(o => `<label class="kanban-ms-opt"><input type="checkbox" class="kanban-ms-cb" value="${escapeHtml(o)}"${selected.has(o) ? " checked" : ""}> ${escapeHtml(o)}</label>`).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="kanban-filter-active">
+        <span class="muted">Активные:</span> ${renderKanbanFilterChips()}
+      </div>
+      <div class="kanban-filter-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="kanban-filter-apply">Показать</button>
+        <button type="button" class="btn btn-sm" id="kanban-filter-add">Добавить фильтр</button>
+        <button type="button" class="btn btn-sm" id="kanban-filter-reset">Сбросить все</button>
+        <button type="button" class="btn btn-sm" id="kanban-filter-close">Закрыть</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindKanbanFilterPanel() {
+  document.getElementById("kanban-filter-field")?.addEventListener("change", e => {
+    kanbanFilterDraft.field = e.target.value;
+    kanbanFilterDraft.values = kanbanFilters.fields?.[e.target.value] || [];
+    const host = document.getElementById("kanban-filter-host");
+    if (host) host.innerHTML = renderKanbanFilterPanel();
+    bindKanbanFilterPanel();
+  });
+  document.getElementById("kanban-ms-all")?.addEventListener("click", () => {
+    document.querySelectorAll(".kanban-ms-cb").forEach(cb => { cb.checked = true; });
+  });
+  document.getElementById("kanban-ms-none")?.addEventListener("click", () => {
+    document.querySelectorAll(".kanban-ms-cb").forEach(cb => { cb.checked = false; });
+  });
+  document.getElementById("kanban-filter-add")?.addEventListener("click", () => {
+    const field = document.getElementById("kanban-filter-field")?.value;
+    const values = [...document.querySelectorAll(".kanban-ms-cb:checked")].map(cb => cb.value);
+    if (!field || !values.length) return alert("Выберите поле и хотя бы одно значение");
+    if (!kanbanFilters.fields) kanbanFilters.fields = {};
+    kanbanFilters.fields[field] = values;
+    kanbanFilterDraft = { field, values: [...values] };
+    renderKanbanBoardOnly();
+    const host = document.getElementById("kanban-filter-host");
+    if (host) {
+      host.innerHTML = renderKanbanFilterPanel();
+      bindKanbanFilterPanel();
+    }
+    showToast("Фильтр добавлен");
+  });
+  document.getElementById("kanban-filter-apply")?.addEventListener("click", () => {
+    const field = document.getElementById("kanban-filter-field")?.value;
+    const values = [...document.querySelectorAll(".kanban-ms-cb:checked")].map(cb => cb.value);
+    if (field && values.length) {
+      if (!kanbanFilters.fields) kanbanFilters.fields = {};
+      kanbanFilters.fields[field] = values;
+    }
+    kanbanFilterPanelOpen = false;
+    renderKanban();
+    showToast("Фильтры применены");
+  });
+  document.getElementById("kanban-filter-reset")?.addEventListener("click", () => {
+    kanbanFilters.fields = {};
+    kanbanFilterDraft = { field: kanbanFilterDraft.field, values: [] };
+    renderKanban();
+  });
+  document.getElementById("kanban-filter-close")?.addEventListener("click", () => {
+    kanbanFilterPanelOpen = false;
+    document.getElementById("kanban-filter-host").innerHTML = "";
+  });
+  document.querySelectorAll(".kanban-chip-x").forEach(btn => {
+    btn.onclick = () => {
+      delete kanbanFilters.fields[btn.dataset.field];
+      renderKanban();
+    };
+  });
+}
+
+function renderKanbanBoardOnly() {
+  const board = document.getElementById("kanban-board");
+  if (!board || !kanbanStages) return;
+  const deals = kanbanFilteredDeals();
+  board.innerHTML = kanbanStages.map(st => {
+    const col = deals.filter(d => d.stage === st);
+    const { count, sum } = kanbanColSummary(col);
+    return `<div class="kanban-col" data-stage="${escapeHtml(st)}">
+      <div class="kanban-col-head">
+        <span>${escapeHtml(st)}</span>
+        <div class="kanban-col-stats">
+          <span class="badge">${count}</span>
+          <span class="kanban-col-sum muted">${formatMoney(sum)}</span>
+        </div>
+      </div>
+      <div class="kanban-col-body" data-stage="${escapeHtml(st)}">
+        ${col.map(d => kanbanCard(d)).join("")}
+      </div>
+    </div>`;
+  }).join("");
+  bindKanbanDnD();
+  const chips = document.querySelector(".kanban-active-chips");
+  if (chips) chips.innerHTML = renderKanbanFilterChips();
+}
+
 async function renderKanban() {
   const el = document.getElementById("page-kanban");
   if (!el) return;
   kanbanStages = await loadKanbanStages();
   const deals = kanbanFilteredDeals();
   const admin = typeof isAdmin === "function" && isAdmin();
-  const owners = [...new Set((state?.deals || []).map(d => d.owner).filter(Boolean))].sort();
-  const categories = ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
+  const filterCount = kanbanActiveFilterCount();
+  const cols = typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+  if (!kanbanFilterDraft.field && cols[0]) {
+    kanbanFilterDraft.field = cols[0].key;
+    kanbanFilterDraft.values = kanbanFilters.fields?.[cols[0].key] || [];
+  }
 
   el.innerHTML = `
     <div class="kanban-toolbar">
-      <input type="search" id="kanban-search" class="kanban-search" placeholder="Поиск по клиенту / ID…" value="${escapeHtml(kanbanFilters.q)}">
-      <select id="kanban-owner-filter" class="kanban-filter" multiple title="Владелец">
-        ${owners.map(o => `<option value="${escapeHtml(o)}"${(kanbanFilters.owners || []).includes(o) ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")}
-      </select>
-      <select id="kanban-cat-filter" class="kanban-filter" multiple title="Категория">
-        ${categories.map(c => `<option value="${c}"${(kanbanFilters.categories || []).includes(c) ? " selected" : ""}>${c}</option>`).join("")}
-      </select>
+      <input type="search" id="kanban-search" class="kanban-search" placeholder="Быстрый поиск…" value="${escapeHtml(kanbanFilters.q)}">
+      <button type="button" class="btn btn-sm${kanbanFilterPanelOpen ? " btn-primary" : ""}" id="kanban-filters-btn">🔍 Фильтры${filterCount ? ` (${filterCount})` : ""}</button>
       ${admin ? `<button type="button" class="btn btn-sm" id="kanban-config-btn">⚙ Столбцы</button>` : ""}
-      <span class="muted">Перетащите карточку для смены стадии</span>
+      <div class="kanban-active-chips">${renderKanbanFilterChips()}</div>
+      <span class="muted kanban-hint">Перетащите карточку для смены стадии · ${deals.length} сделок</span>
       <button type="button" class="btn btn-sm" onclick="openDealModal()">+ Сделка</button>
     </div>
+    <div id="kanban-filter-host">${kanbanFilterPanelOpen ? renderKanbanFilterPanel() : ""}</div>
     <div class="kanban-board" id="kanban-board">
       ${kanbanStages.map(st => {
         const col = deals.filter(d => d.stage === st);
@@ -78,16 +219,21 @@ async function renderKanban() {
 
   document.getElementById("kanban-search")?.addEventListener("input", e => {
     kanbanFilters.q = e.target.value;
-    renderKanban();
+    renderKanbanBoardOnly();
   });
-  const bindMulti = (id, key) => {
-    document.getElementById(id)?.addEventListener("change", e => {
-      kanbanFilters[key] = [...e.target.selectedOptions].map(o => o.value);
-      renderKanban();
-    });
-  };
-  bindMulti("kanban-owner-filter", "owners");
-  bindMulti("kanban-cat-filter", "categories");
+  document.getElementById("kanban-filters-btn")?.addEventListener("click", () => {
+    kanbanFilterPanelOpen = !kanbanFilterPanelOpen;
+    const host = document.getElementById("kanban-filter-host");
+    if (!host) return;
+    if (kanbanFilterPanelOpen) {
+      host.innerHTML = renderKanbanFilterPanel();
+      bindKanbanFilterPanel();
+    } else {
+      host.innerHTML = "";
+    }
+    document.getElementById("kanban-filters-btn")?.classList.toggle("btn-primary", kanbanFilterPanelOpen);
+  });
+  if (kanbanFilterPanelOpen) bindKanbanFilterPanel();
   document.getElementById("kanban-config-btn")?.addEventListener("click", () => openKanbanConfigPanel());
   bindKanbanDnD();
 }
@@ -194,11 +340,11 @@ function bindKanbanDnD() {
         const res = await apiSaveDeal(deal);
         if (res.deal) state.deals[idx] = migrateDeal(res.deal);
         persistStateCache(state);
-        renderKanban();
+        renderKanbanBoardOnly();
         showToast(`Стадия → ${newStage}`);
       } catch (err) {
         alert(err.message);
-        renderKanban();
+        renderKanbanBoardOnly();
       }
     });
   });

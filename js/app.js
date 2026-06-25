@@ -986,17 +986,17 @@ function renderScoring() {
           <tbody>${items.map((s, i) => {
             const scale = buildScoreScale(s);
             return `<tr data-idx="${i}" data-key="${escapeHtml(s.key)}">
-              <td><input class="sc-name" value="${escapeHtml(s.name)}"></td>
-              <td><input class="sc-question" value="${escapeHtml(s.question || "")}" style="min-width:160px"></td>
-              <td><input class="sc-col" value="${escapeHtml(s.col || "")}" style="width:4rem"></td>
+              <td><textarea class="sc-name sc-expand" rows="2">${escapeHtml(s.name)}</textarea></td>
+              <td><textarea class="sc-question sc-expand" rows="3">${escapeHtml(s.question || "")}</textarea></td>
+              <td><textarea class="sc-col sc-expand" rows="2">${escapeHtml(s.col || "")}</textarea></td>
               <td><input type="number" class="sc-weight" value="${Math.round((s.weight || 0) * 100)}" min="0" max="100" style="width:4rem"></td>
-              <td><input class="sc-s5" value="${escapeHtml(scale[5] || "")}"></td>
-              <td><input class="sc-s4" value="${escapeHtml(scale[4] || "")}"></td>
-              <td><input class="sc-s3" value="${escapeHtml(scale[3] || "")}"></td>
-              <td><input class="sc-s2" value="${escapeHtml(scale[2] || "")}"></td>
-              <td><input class="sc-s1" value="${escapeHtml(scale[1] || "")}"></td>
-              <td><input class="sc-s0" value="${escapeHtml(s.s0 || "")}"></td>
-              <td><input class="sc-owner" value="${escapeHtml(s.owner || "")}"></td>
+              <td><textarea class="sc-s5 sc-expand" rows="3">${escapeHtml(scale[5] || "")}</textarea></td>
+              <td><textarea class="sc-s4 sc-expand" rows="3">${escapeHtml(scale[4] || "")}</textarea></td>
+              <td><textarea class="sc-s3 sc-expand" rows="3">${escapeHtml(scale[3] || "")}</textarea></td>
+              <td><textarea class="sc-s2 sc-expand" rows="3">${escapeHtml(scale[2] || "")}</textarea></td>
+              <td><textarea class="sc-s1 sc-expand" rows="3">${escapeHtml(scale[1] || "")}</textarea></td>
+              <td><textarea class="sc-s0 sc-expand" rows="3">${escapeHtml(s.s0 || "")}</textarea></td>
+              <td><textarea class="sc-owner sc-expand" rows="2">${escapeHtml(s.owner || "")}</textarea></td>
             </tr>`;
           }).join("")}
           </tbody>
@@ -1048,19 +1048,20 @@ function renderScoring() {
 
 async function saveScoringFromTable() {
   const rows = [...document.querySelectorAll(".scoring-edit-table tbody tr")];
+  const val = sel => tr.querySelector(sel)?.value?.trim() || "";
   const items = rows.map(tr => ({
     key: tr.dataset.key,
-    name: tr.querySelector(".sc-name")?.value || "",
-    question: tr.querySelector(".sc-question")?.value || "",
-    col: tr.querySelector(".sc-col")?.value || "—",
+    name: val(".sc-name"),
+    question: val(".sc-question"),
+    col: val(".sc-col") || "—",
     weight: (Number(tr.querySelector(".sc-weight")?.value) || 0) / 100,
-    owner: tr.querySelector(".sc-owner")?.value || "—",
-    s5: tr.querySelector(".sc-s5")?.value || "",
-    s4: tr.querySelector(".sc-s4")?.value || "",
-    s3: tr.querySelector(".sc-s3")?.value || "",
-    s2: tr.querySelector(".sc-s2")?.value || "",
-    s1: tr.querySelector(".sc-s1")?.value || "",
-    s0: tr.querySelector(".sc-s0")?.value || "",
+    owner: val(".sc-owner") || "—",
+    s5: val(".sc-s5"),
+    s4: val(".sc-s4"),
+    s3: val(".sc-s3"),
+    s2: val(".sc-s2"),
+    s1: val(".sc-s1"),
+    s0: val(".sc-s0"),
   }));
   try {
     const res = await apiSaveScoring(items);
@@ -1240,6 +1241,7 @@ async function openDealModalAsync(idx) {
   modal?.querySelector(".modal-body")?.replaceChildren();
   modal.querySelector(".modal-body").innerHTML = renderDealModalSkeleton();
   modal.classList.add("open");
+  if (typeof renderDealModalTabs === "function") renderDealModalTabs();
 
   try {
     await ensureArchitectureLoaded();
@@ -1607,6 +1609,7 @@ function closeModal(id) {
   if (id === "deal-modal") {
     dealModalOpenToken++;
     dealModalOpening = false;
+    if (typeof hideDealModalTabs === "function") hideDealModalTabs();
   }
   document.getElementById(id)?.classList.remove("open");
 }

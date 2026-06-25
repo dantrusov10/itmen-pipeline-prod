@@ -1283,9 +1283,25 @@ body.page-deals-active .deals-table-hint {
 }
 
 /* CRM v4 */
-.deal-tabs { display: flex; gap: .25rem; padding: .5rem 1rem; border-bottom: 1px solid var(--border); background: #f8fafc; flex-wrap: wrap; }
-.deal-tab { border: 1px solid var(--border); background: #fff; padding: .35rem .65rem; border-radius: 6px; font-size: .82rem; cursor: pointer; }
-.deal-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.deal-tabs-wrap {
+  flex-shrink: 0;
+  background: #eef2ff;
+  border-bottom: 2px solid var(--navy);
+}
+.deal-tabs-wrap[hidden] { display: none !important; }
+.deal-tabs { display: flex; gap: .35rem; padding: .6rem 1rem; flex-wrap: wrap; }
+.deal-tab {
+  border: 1px solid var(--navy-light);
+  background: #fff;
+  padding: .45rem .85rem;
+  border-radius: 8px;
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--navy);
+}
+.deal-tab:hover { background: #f8fafc; }
+.deal-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); box-shadow: 0 2px 6px rgba(15,23,42,.15); }
 .feed-list { max-height: 360px; overflow-y: auto; }
 .feed-item { padding: .65rem 0; border-bottom: 1px solid var(--border); }
 .feed-meta { font-size: .8rem; margin-bottom: .25rem; }
@@ -1299,8 +1315,19 @@ body.page-deals-active .deals-table-hint {
 .kanban-col-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .kanban-col-sum { font-size: .72rem; font-weight: 500; }
 .kanban-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
-.kanban-search { min-width: 200px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; }
-.kanban-filter { min-width: 120px; max-width: 180px; font-size: .82rem; }
+.kanban-search { min-width: 180px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; }
+.kanban-active-chips { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; flex: 1; min-width: 120px; }
+.kanban-filter-chip { display: inline-flex; align-items: center; gap: .25rem; background: #e0e7ff; color: var(--navy); padding: .2rem .5rem; border-radius: 999px; font-size: .78rem; }
+.kanban-chip-x { border: none; background: transparent; cursor: pointer; padding: 0 .15rem; color: inherit; }
+.kanban-filter-panel { margin-bottom: 1rem; }
+.kanban-filter-steps { display: grid; grid-template-columns: 220px 1fr; gap: 1rem; margin-top: .75rem; }
+@media (max-width: 768px) { .kanban-filter-steps { grid-template-columns: 1fr; } }
+.kanban-filter-ms-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: .5rem; background: #fafafa; }
+.kanban-ms-opt { display: block; padding: .25rem 0; font-size: .85rem; cursor: pointer; }
+.kanban-filter-ms-actions { display: flex; gap: .35rem; margin: .35rem 0; }
+.kanban-filter-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.kanban-filter-active { margin-top: .75rem; font-size: .85rem; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.kanban-hint { margin-left: auto; font-size: .8rem; }
 .kanban-config-panel { margin-top: 1rem; }
 .kanban-config-list { list-style: none; padding: 0; margin: .5rem 0; }
 .kanban-config-list li { display: flex; align-items: center; gap: .5rem; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: .35rem; background: #fff; cursor: grab; }
@@ -1312,6 +1339,22 @@ body.page-deals-active .deals-table-hint {
 .owner-avatar-ph { display: inline-block; background: #e2e8f0; }
 .events-layout { max-height: 70vh; overflow-y: auto; }
 .scoring-edit-table input { width: 100%; font-size: .78rem; padding: .2rem .35rem; border: 1px solid var(--border); border-radius: 4px; }
+.scoring-edit-table textarea.sc-expand {
+  width: 100%;
+  min-width: 90px;
+  min-height: 2.5rem;
+  font-size: .78rem;
+  padding: .35rem .45rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  resize: vertical;
+  line-height: 1.35;
+  font-family: inherit;
+}
+.scoring-edit-table td { vertical-align: top; min-width: 80px; }
+.scoring-edit-table .sc-question { min-width: 180px; }
+.scoring-edit-table .sc-s5, .scoring-edit-table .sc-s4, .scoring-edit-table .sc-s3,
+.scoring-edit-table .sc-s2, .scoring-edit-table .sc-s1, .scoring-edit-table .sc-s0 { min-width: 120px; }
 .calendar-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
 .cal-view-toggle { margin-left: auto; display: flex; gap: .25rem; }
 .cal-assignee-select { min-width: 160px; font-size: .85rem; }
