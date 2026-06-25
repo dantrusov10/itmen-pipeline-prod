@@ -41,11 +41,11 @@ systemctl enable --now itmen-pipeline-backup.timer itmen-pipeline-snapshot.timer
 /opt/itmen-pipeline/scripts/deploy-frontend.sh
 ```
 
-По умолчанию клонирует **prod** репозиторий `itmen-pipeline` (ветка `master`).  
-Переопределение:
+По умолчанию клонирует **prod** репозиторий `itmen-pipeline-prod` (ветка `master`).  
+Legacy (GAS / Google Таблицы):
 
 ```bash
-ITMEN_REPO=https://github.com/dantrusov10/itmen-pipeline-staging.git ITMEN_BRANCH=master \
+ITMEN_REPO=https://github.com/dantrusov10/itmen-pipeline-old.git ITMEN_BRANCH=master \
   /opt/itmen-pipeline/scripts/deploy-frontend.sh
 ```
 
