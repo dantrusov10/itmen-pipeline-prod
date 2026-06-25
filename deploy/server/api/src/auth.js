@@ -98,6 +98,20 @@ function canDeleteDeal(user, deal) {
   return canEditDeal(user, deal);
 }
 
+function resolveTaskAssignee(user, requested) {
+  if (!user) return "";
+  const req = String(requested || "").trim();
+  if (user.role === "admin") return req;
+  const self = String(user.managerName || "").trim();
+  if (!self) return req;
+  if (req && req !== self) {
+    const err = new Error("Менеджер может назначать задачи только на себя");
+    err.status = 403;
+    throw err;
+  }
+  return self;
+}
+
 module.exports = {
   loginUser,
   refreshUser,
@@ -106,4 +120,5 @@ module.exports = {
   requireAdmin,
   canEditDeal,
   canDeleteDeal,
+  resolveTaskAssignee,
 };

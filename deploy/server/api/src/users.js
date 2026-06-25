@@ -80,6 +80,47 @@ async function changePassword(token, oldPassword, newPassword) {
   return { ok: true };
 }
 
+async function changeEmail(token, password, newEmail) {
+  const email = String(newEmail || "").trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Некорректный логин (email)");
+  }
+  if (!password) throw new Error("Укажите пароль для подтверждения");
+
+  const PB_URL = process.env.PB_URL || "http://127.0.0.1:8095";
+  const res = await fetch(`${PB_URL}/api/collections/pipeline_users/auth-refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const auth = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("Сессия истекла");
+  const userId = auth.record?.id;
+  const oldEmail = auth.record?.email;
+  if (!userId || !oldEmail) throw new Error("Пользователь не найден");
+  if (email === oldEmail.toLowerCase()) throw new Error("Новый логин совпадает с текущим");
+
+  const check = await fetch(`${PB_URL}/api/collections/pipeline_users/auth-with-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: oldEmail, password }),
+  });
+  if (!check.ok) throw new Error("Неверный пароль");
+
+  const dup = await findOne("pipeline_users", `email="${email.replace(/"/g, '\\"')}"`);
+  if (dup && dup.id !== userId) throw new Error("Этот логин уже занят");
+
+  const { ensureAuth, updateRecord: adminUpdate } = require("./pb-client");
+  await ensureAuth();
+  await adminUpdate("pipeline_users", userId, { email });
+
+  const prof = await findOne("user_profiles", `user_id="${userId}"`);
+  if (prof) await updateRecord("user_profiles", prof.id, { email });
+
+  const { loginUser } = require("./auth");
+  const session = await loginUser(email, password);
+  return { email, token: session.token, user: session.user };
+}
+
 async function listUsers() {
   const rows = await listAll("pipeline_users", { sort: "email" });
   return rows.map(u => ({
@@ -151,6 +192,7 @@ module.exports = {
   updateProfile,
   uploadAvatar,
   changePassword,
+  changeEmail,
   listUsers,
   createUser,
   updateUser,

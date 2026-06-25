@@ -110,6 +110,36 @@ function dealTabCanEdit() {
   return editingDealIdx == null ? true : canEditDeal(state.deals[editingDealIdx]);
 }
 
+function taskAssigneeOptions() {
+  const owners = state?.lists?.owners || [];
+  if (typeof isAdmin === "function" && isAdmin()) return owners;
+  const self = window.ITMEN_AUTH?.user?.managerName || "";
+  return self ? [self] : [];
+}
+
+function resolveClientTaskAssignee(requested) {
+  const options = taskAssigneeOptions();
+  if (typeof isAdmin === "function" && isAdmin()) {
+    return (requested || options[0] || "").trim();
+  }
+  return (window.ITMEN_AUTH?.user?.managerName || "").trim();
+}
+
+function renderTaskAssigneeField() {
+  const options = taskAssigneeOptions();
+  const self = options[0] || "";
+  if (!options.length) {
+    return `<span class="muted" style="font-size:.82rem">Исполнитель не задан</span>`;
+  }
+  if (options.length === 1) {
+    return `<input type="hidden" id="task-assignee" value="${escapeHtml(self)}">
+      <span class="task-assignee-self muted" style="font-size:.82rem;white-space:nowrap">На себя: <strong>${escapeHtml(self)}</strong></span>`;
+  }
+  return `<select id="task-assignee">${options.map(o =>
+    `<option value="${escapeHtml(o)}"${o === self ? " selected" : ""}>${escapeHtml(o)}</option>`
+  ).join("")}</select>`;
+}
+
 function renderEventsTab(dealId, crm) {
   const items = (crm.activities || []).map(a => `
     <div class="feed-item feed-${a.type}">
@@ -138,8 +168,7 @@ function renderEventsTab(dealId, crm) {
       ${canEdit ? `<div class="task-form">
         <input id="task-title" placeholder="Задача / напоминание">
         <input type="datetime-local" id="task-due">
-        <select id="task-assignee">${(state.lists?.owners || []).map(o =>
-          `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}</select>
+        ${renderTaskAssigneeField()}
         <button type="button" class="btn btn-primary btn-sm" id="task-add">Добавить задачу</button>
       </div>` : ""}
       <div class="form-section-title" style="margin-top:1.25rem">Прикрепить файл</div>
@@ -254,7 +283,7 @@ function bindDealCrmTabEvents(dealId, tab) {
       if (dueAt && dueAt.length === 16) dueAt += ":00";
       await apiSaveTask(dealId, {
         title, dueAt,
-        assignee: document.getElementById("task-assignee")?.value || "",
+        assignee: resolveClientTaskAssignee(document.getElementById("task-assignee")?.value || ""),
         status: "open",
       });
       delete dealCrmCache[dealId];

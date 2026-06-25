@@ -13,6 +13,7 @@ const {
   requireAdmin,
   canEditDeal,
   canDeleteDeal,
+  resolveTaskAssignee,
 } = require("./auth");
 const { getDynamics } = require("./dynamics");
 const { takeDailySnapshot } = require("./snapshot");
@@ -22,7 +23,7 @@ const {
   saveContacts, saveDealInfo,
 } = require("./deal-crm");
 const {
-  getOrCreateProfile, updateProfile, uploadAvatar, changePassword,
+  getOrCreateProfile, updateProfile, uploadAvatar, changePassword, changeEmail,
   listUsers, createUser, updateUser, deleteUser,
 } = require("./users");
 const {
@@ -249,12 +250,14 @@ app.post("/api/deals/:dealId/tasks", requireAuth(), async (req, res) => {
   try {
     const deal = await loadPipelineState({ dealId: req.params.dealId });
     if (!canEditDeal(req.user, deal)) return res.status(403).json({ error: "Нет прав" });
-    const item = await saveTask(req.params.dealId, req.body?.task || {}, {
+    const task = { ...(req.body?.task || {}) };
+    task.assignee = resolveTaskAssignee(req.user, task.assignee);
+    const item = await saveTask(req.params.dealId, task, {
       savedBy: req.user.displayName || req.user.email,
     });
     res.json({ ok: true, item });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -495,6 +498,21 @@ app.post("/api/profile/password", requireAuth(), async (req, res) => {
     const token = authHeader.replace(/^Bearer\s+/i, "");
     await changePassword(token, req.body?.oldPassword, req.body?.newPassword);
     res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post("/api/profile/email", requireAuth(), async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const { email, token: newToken, user } = await changeEmail(
+      token,
+      req.body?.password,
+      req.body?.email,
+    );
+    res.json({ ok: true, email, token: newToken, user });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

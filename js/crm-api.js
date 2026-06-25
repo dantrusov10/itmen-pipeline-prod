@@ -114,6 +114,13 @@ async function apiChangePassword(oldPassword, newPassword) {
   });
 }
 
+async function apiChangeEmail(email, password) {
+  return crmFetch("/api/profile/email", {
+    method: "POST",
+    body: { email, password },
+  });
+}
+
 async function apiUploadAvatar(file) {
   const fd = new FormData();
   fd.append("avatar", file);
@@ -194,6 +201,7 @@ window.apiMarkNotificationsRead = apiMarkNotificationsRead;
 window.apiGetProfile = apiGetProfile;
 window.apiUpdateProfile = apiUpdateProfile;
 window.apiChangePassword = apiChangePassword;
+window.apiChangeEmail = apiChangeEmail;
 window.apiUploadAvatar = apiUploadAvatar;
 window.apiAdminListUsers = apiAdminListUsers;
 window.apiAdminSaveUser = apiAdminSaveUser;

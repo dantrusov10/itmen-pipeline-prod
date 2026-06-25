@@ -35,6 +35,14 @@ async function renderProfileSelf() {
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="prof-save" style="margin-top:1rem">Сохранить настройки</button>
       <hr style="margin:1.5rem 0">
+      <h4>Смена логина</h4>
+      <p class="muted" style="font-size:.82rem;margin-bottom:.5rem">Текущий логин: <strong>${escapeHtml(profile.email || u.email || "")}</strong></p>
+      <div class="form-grid">
+        <div><label>Новый логин (email)</label><input type="email" id="login-new" placeholder="новый@email.ru" autocomplete="username"></div>
+        <div><label>Пароль для подтверждения</label><input type="password" id="login-pwd" autocomplete="current-password"></div>
+      </div>
+      <button type="button" class="btn btn-sm" id="login-save" style="margin-top:.5rem">Сменить логин</button>
+      <hr style="margin:1.5rem 0">
       <h4>Смена пароля</h4>
       <div class="form-grid">
         <div><label>Текущий</label><input type="password" id="pwd-old"></div>
@@ -62,6 +70,21 @@ async function renderProfileSelf() {
           document.getElementById("pwd-new").value,
         );
         showToast("Пароль изменён");
+      } catch (e) { alert(e.message); }
+    };
+    document.getElementById("login-save").onclick = async () => {
+      const email = document.getElementById("login-new")?.value?.trim();
+      const password = document.getElementById("login-pwd")?.value || "";
+      if (!email) return alert("Укажите новый логин");
+      if (!password) return alert("Укажите пароль для подтверждения");
+      try {
+        const res = await apiChangeEmail(email, password);
+        if (res.token && res.user && typeof persistAuth === "function") {
+          persistAuth({ token: res.token, user: res.user });
+          if (typeof renderAuthTopbar === "function") renderAuthTopbar();
+        }
+        showToast("Логин изменён");
+        renderProfileSelf();
       } catch (e) { alert(e.message); }
     };
   } catch (e) {
