@@ -665,7 +665,22 @@ function updateDealsTableSortMarks() {
     const active = key === dealsTableSort.key;
     el.classList.toggle("sorted-asc", active && dealsTableSort.dir === "asc");
     el.classList.toggle("sorted-desc", active && dealsTableSort.dir === "desc");
-    el.innerHTML = `<span class="th-label">${escapeHtml(col?.label || key)}</span>${sortMarkHtml(key)}`;
+    let label = el.querySelector(".th-label");
+    if (!label) {
+      label = document.createElement("span");
+      label.className = "th-label";
+      el.prepend(label);
+    }
+    label.textContent = col?.label || key;
+    const mark = el.querySelector(".sort-mark");
+    const markHtml = sortMarkHtml(key);
+    if (mark) {
+      const tmp = document.createElement("span");
+      tmp.innerHTML = markHtml;
+      mark.replaceWith(tmp.firstChild);
+    } else {
+      el.insertAdjacentHTML("beforeend", markHtml);
+    }
   });
 }
 
@@ -1127,7 +1142,14 @@ function renderDealsTable(deals) {
   if (typeof syncDealsReportFiltersToUI === "function") syncDealsReportFiltersToUI();
   updateDealsTableBody(deals);
   renderDealsFilterBanner();
-  requestAnimationFrame(syncDealsTableHeadHeight);
+  requestAnimationFrame(() => {
+    syncDealsTableHeadHeight();
+    const tbl = document.getElementById("deals-table");
+    if (tbl) {
+      delete tbl.dataset.resizeBound;
+      if (typeof initTableColumnResize === "function") initTableColumnResize(tbl, "itmen_deals_col_widths");
+    }
+  });
 }
 
 window.ITMEN_AVATARS = {};

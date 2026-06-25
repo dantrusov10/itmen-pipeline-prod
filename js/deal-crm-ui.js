@@ -2,6 +2,22 @@
 let dealCrmCache = {};
 let dealModalTab = "passport";
 let dealPassportHtml = "";
+let dealModalDealId = "";
+
+function getDealModalDealId() {
+  const modal = document.getElementById("deal-modal");
+  return (modal?.dataset.dealId || "").trim()
+    || dealModalDealId
+    || document.getElementById("f-id")?.value?.trim()
+    || (editingDealIdx != null ? state?.deals?.[editingDealIdx]?.id : "")
+    || "";
+}
+
+function setDealModalDealId(id) {
+  dealModalDealId = id || "";
+  const modal = document.getElementById("deal-modal");
+  if (modal) modal.dataset.dealId = dealModalDealId;
+}
 
 const DEAL_TABS = [
   { id: "passport", label: "Паспорт" },
@@ -59,7 +75,7 @@ async function switchDealTab(tab) {
     restorePassportTab();
     return;
   }
-  const dealId = document.getElementById("f-id")?.value;
+  const dealId = getDealModalDealId();
   if (!dealId) {
     body.innerHTML = `<p class="muted">Сначала сохраните сделку, чтобы открыть вкладку «${escapeHtml(DEAL_TABS.find(t => t.id === tab)?.label || tab)}»</p>`;
     return;
@@ -292,18 +308,21 @@ function bindDealCrmTabEvents(dealId, tab) {
     });
   }
   if (tab === "contacts") {
-    document.getElementById("contact-add")?.onclick = () => {
+    const contactAdd = document.getElementById("contact-add");
+    if (contactAdd) contactAdd.onclick = () => {
       document.getElementById("contacts-wrap")?.insertAdjacentHTML("beforeend",
         `<div class="contact-row"><input class="c-name" placeholder="ФИО"><input class="c-email" placeholder="Email"><input class="c-phone" placeholder="Телефон"><input class="c-role" placeholder="Роль"></div>`);
     };
-    document.getElementById("contacts-save")?.onclick = async () => {
+    const contactsSave = document.getElementById("contacts-save");
+    if (contactsSave) contactsSave.onclick = async () => {
       await apiSaveContacts(dealId, collectContactsFromDom());
       delete dealCrmCache[dealId];
       showToast("Контакты сохранены");
     };
   }
   if (tab === "info") {
-    document.getElementById("info-save")?.onclick = async () => {
+    const infoSave = document.getElementById("info-save");
+    if (infoSave) infoSave.onclick = async () => {
       await apiSaveDealInfo(dealId, collectInfoFromDom());
       delete dealCrmCache[dealId];
       showToast("Информация сохранена");
@@ -322,6 +341,8 @@ if (document.readyState !== "loading") initDealModalTabs();
 window.renderDealModalTabs = renderDealModalTabs;
 window.initDealModalTabs = initDealModalTabs;
 window.switchDealTab = switchDealTab;
+window.setDealModalDealId = setDealModalDealId;
+window.getDealModalDealId = getDealModalDealId;
 window.storeDealPassportHtml = storeDealPassportHtml;
 window.invalidateDealCrmCache = invalidateDealCrmCache;
 window.dealModalTab = () => dealModalTab;

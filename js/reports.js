@@ -126,51 +126,60 @@ function reportDistinctValues(entity, field) {
   return [];
 }
 
-function renderReportFiltersUI(entity, fields) {
-  const filters = reportState.filters || {};
-  const expanded = reportState.filterExpanded || null;
-  const rows = fields.map(field => {
-    const type = reportFieldFilterType(field);
-    const isOpen = expanded === field;
-    const hasVal = type === "range"
-      ? (filters[`${field}__from`] || filters[`${field}__to`])
-      : type === "bool"
-        ? filters[field] != null && filters[field] !== ""
-        : (Array.isArray(filters[field]) && filters[field].length);
-    let body = "";
-    if (isOpen) {
-      if (type === "range") {
-        body = `<div class="rep-filter-body rep-filter-range">
-          <input type="number" class="rep-f-from" data-field="${field}" placeholder="от" value="${escapeHtml(filters[`${field}__from`] ?? "")}">
-          <span class="muted">—</span>
-          <input type="number" class="rep-f-to" data-field="${field}" placeholder="до" value="${escapeHtml(filters[`${field}__to`] ?? "")}">
-        </div>`;
-      } else if (type === "bool") {
-        body = `<div class="rep-filter-body">
-          <select class="rep-f-bool" data-field="${field}">
-            <option value="">Все</option>
-            <option value="1"${filters[field] === "1" || filters[field] === true ? " selected" : ""}>Да</option>
-            <option value="0"${filters[field] === "0" || filters[field] === false ? " selected" : ""}>Нет</option>
-          </select>
-        </div>`;
-      } else {
-        const options = reportDistinctValues(entity, field);
-        const sel = new Set(Array.isArray(filters[field]) ? filters[field] : []);
-        body = `<div class="rep-filter-body rep-filter-ms">
-          ${options.length ? options.map(o =>
-            `<label class="deals-ms-opt"><input type="checkbox" class="rep-f-cb" data-field="${field}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}><span>${escapeHtml(o)}</span></label>`
-          ).join("") : `<span class="muted">Нет значений для фильтра</span>`}
-        </div>`;
-      }
-    }
-    return `<div class="rep-filter-row${isOpen ? " open" : ""}${hasVal ? " active" : ""}" data-field="${field}">
-      <button type="button" class="rep-filter-head">${escapeHtml(reportFieldLabel(field))}${hasVal ? " ●" : ""}</button>
-      ${body}
+function renderReportFilterCell(entity, field, filters) {
+  const type = reportFieldFilterType(field);
+  if (type === "range") {
+    return `<div class="rep-filter-range inline">
+      <input type="number" class="rep-f-from" data-field="${field}" placeholder="от" value="${escapeHtml(filters[`${field}__from`] ?? "")}">
+      <span class="muted">—</span>
+      <input type="number" class="rep-f-to" data-field="${field}" placeholder="до" value="${escapeHtml(filters[`${field}__to`] ?? "")}">
     </div>`;
-  }).join("");
-  return `<div class="rep-filters">
-    <label>Фильтры по атрибутам</label>
-    <div class="rep-filter-list">${rows}</div>
+  }
+  if (type === "bool") {
+    return `<select class="rep-f-bool" data-field="${field}">
+      <option value="">Все</option>
+      <option value="1"${filters[field] === "1" || filters[field] === true ? " selected" : ""}>Да</option>
+      <option value="0"${filters[field] === "0" || filters[field] === false ? " selected" : ""}>Нет</option>
+    </select>`;
+  }
+  const options = reportDistinctValues(entity, field);
+  const sel = new Set(Array.isArray(filters[field]) ? filters[field] : []);
+  const label = sel.size ? `${sel.size} выбр.` : "Все";
+  const open = reportState.filterExpanded === field;
+  return `<div class="rep-ms-filter${open ? " open" : ""}" data-field="${field}">
+    <button type="button" class="btn btn-sm rep-ms-toggle">${escapeHtml(label)} ▾</button>
+    <div class="rep-ms-panel" ${open ? "" : "hidden"}>
+      ${options.length ? `<div class="rep-filter-ms">${options.map(o =>
+        `<label class="deals-ms-opt"><input type="checkbox" class="rep-f-cb" data-field="${field}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}><span>${escapeHtml(o)}</span></label>`
+      ).join("")}</div>` : `<span class="muted">Нет значений</span>`}
+    </div>
+  </div>`;
+}
+
+function renderReportUnifiedTable(entity, fields) {
+  const filters = reportState.filters || {};
+  const colSearch = reportState.colSearch || "";
+  const filteredFields = colSearch
+    ? fields.filter(f => reportFieldLabel(f).toLowerCase().includes(colSearch.toLowerCase()) || f.toLowerCase().includes(colSearch.toLowerCase()))
+    : fields;
+  const checked = reportState.checkedColumns || fields;
+  const checkedSet = new Set(checked);
+  return `<div class="rep-unified">
+    <label>Атрибуты и фильтры <span class="muted">(${fields.length})</span></label>
+    <input type="search" id="rep-col-search" class="rep-unified-search" placeholder="Поиск атрибута…" value="${escapeHtml(colSearch)}">
+    <div class="rep-unified-table-wrap">
+      <table class="rep-attr-table">
+        <thead><tr><th class="rep-th-check"></th><th>Атрибут</th><th>Фильтр</th></tr></thead>
+        <tbody>
+          ${filteredFields.map(f => `<tr data-field="${f}">
+            <td><input type="checkbox" class="rep-col-cb" value="${f}"${checkedSet.has(f) ? " checked" : ""}></td>
+            <td class="rep-attr-name">${escapeHtml(reportFieldLabel(f))}</td>
+            <td class="rep-filter-cell">${renderReportFilterCell(entity, f, filters)}</td>
+          </tr>`).join("")}
+          ${!filteredFields.length ? `<tr><td colspan="3" class="muted">Ничего не найдено</td></tr>` : ""}
+        </tbody>
+      </table>
+    </div>
   </div>`;
 }
 
@@ -200,15 +209,7 @@ function collectReportFiltersFromDom() {
   return filters;
 }
 
-function bindReportFilterEvents() {
-  document.querySelectorAll(".rep-filter-head").forEach(btn => {
-    btn.onclick = () => {
-      const field = btn.closest(".rep-filter-row")?.dataset.field;
-      reportState.filterExpanded = reportState.filterExpanded === field ? null : field;
-      collectReportFiltersFromDom();
-      renderReportBuilder();
-    };
-  });
+function bindReportUnifiedEvents() {
   document.querySelectorAll(".rep-f-from, .rep-f-to").forEach(inp => {
     inp.oninput = () => collectReportFiltersFromDom();
   });
@@ -216,8 +217,43 @@ function bindReportFilterEvents() {
     sel.onchange = () => collectReportFiltersFromDom();
   });
   document.querySelectorAll(".rep-f-cb").forEach(cb => {
-    cb.onchange = () => collectReportFiltersFromDom();
+    cb.onchange = () => {
+      collectReportFiltersFromDom();
+      const wrap = cb.closest(".rep-ms-filter");
+      const n = wrap?.querySelectorAll(".rep-f-cb:checked").length || 0;
+      const btn = wrap?.querySelector(".rep-ms-toggle");
+      if (btn) btn.textContent = (n ? `${n} выбр.` : "Все") + " ▾";
+    };
   });
+  document.querySelectorAll(".rep-ms-toggle").forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      const wrap = btn.closest(".rep-ms-filter");
+      if (!wrap) return;
+      const opening = !wrap.classList.contains("open");
+      document.querySelectorAll(".rep-ms-filter.open").forEach(el => {
+        if (el !== wrap) {
+          el.classList.remove("open");
+          el.querySelector(".rep-ms-panel")?.setAttribute("hidden", "");
+        }
+      });
+      wrap.classList.toggle("open", opening);
+      const panel = wrap.querySelector(".rep-ms-panel");
+      if (panel) panel.hidden = !opening;
+      reportState.filterExpanded = opening ? wrap.dataset.field : null;
+    };
+  });
+  document.querySelectorAll(".rep-col-cb").forEach(cb => {
+    cb.onchange = () => {
+      reportState.checkedColumns = [...document.querySelectorAll(".rep-col-cb:checked")].map(x => x.value);
+    };
+  });
+}
+
+function collectReportCheckedColumns() {
+  const cols = [...document.querySelectorAll(".rep-col-cb:checked")].map(c => c.value);
+  reportState.checkedColumns = cols;
+  return cols;
 }
 
 function reportFieldLabel(key) {
@@ -250,10 +286,7 @@ async function renderReportBuilder() {
     const { items: presets } = await apiListReportPresets();
     const presetList = presets || [];
     const fields = entities?.[reportState.entity] || [];
-    const colSearch = reportState.colSearch || "";
-    const filteredFields = colSearch
-      ? fields.filter(f => reportFieldLabel(f).toLowerCase().includes(colSearch.toLowerCase()) || f.toLowerCase().includes(colSearch.toLowerCase()))
-      : fields;
+    if (!reportState.checkedColumns?.length) reportState.checkedColumns = [...fields];
     box.innerHTML = `
     <h3>Конструктор отчётов</h3>
     <div class="form-grid">
@@ -272,14 +305,7 @@ async function renderReportBuilder() {
           <option value="pie" ${reportState.chartType === "pie" ? "selected" : ""}>Круг</option>
         </select></div>
     </div>
-    <div style="margin-top:1rem">
-      <label>Колонки <span class="muted">(${fields.length} атрибутов)</span></label>
-      <input type="search" id="rep-col-search" placeholder="Поиск атрибута…" value="${escapeHtml(colSearch)}" style="width:100%;max-width:320px;margin:.35rem 0 .5rem">
-      <div class="rep-cols">${filteredFields.map(f =>
-        `<label class="deals-ms-opt"><input type="checkbox" class="rep-col-cb" value="${f}" checked><span>${escapeHtml(reportFieldLabel(f))}</span></label>`).join("")}
-      ${!filteredFields.length ? "<span class='muted'>Ничего не найдено</span>" : ""}
-    </div>
-    ${renderReportFiltersUI(reportState.entity, fields)}
+    ${renderReportUnifiedTable(reportState.entity, fields)}
     <div style="margin-top:1rem;display:flex;gap:.5rem">
       <button type="button" class="btn btn-primary btn-sm" id="rep-run">Построить</button>
       <button type="button" class="btn btn-sm" id="rep-save">Сохранить пресет</button>
@@ -290,21 +316,25 @@ async function renderReportBuilder() {
     document.getElementById("rep-entity").onchange = e => {
       reportState.entity = e.target.value;
       reportState.colSearch = "";
+      reportState.checkedColumns = null;
+      reportState.filterExpanded = null;
       renderReportBuilder();
     };
     document.getElementById("rep-col-search")?.addEventListener("input", e => {
+      collectReportFiltersFromDom();
+      collectReportCheckedColumns();
       reportState.colSearch = e.target.value;
       renderReportBuilder();
     });
     document.getElementById("rep-group").onchange = e => { reportState.groupBy = e.target.value; };
     document.getElementById("rep-chart").onchange = e => { reportState.chartType = e.target.value; };
     document.getElementById("rep-run").onclick = runCurrentReport;
-    bindReportFilterEvents();
+    bindReportUnifiedEvents();
     document.getElementById("rep-save").onclick = async () => {
       const name = prompt("Название пресета");
       if (!name) return;
       collectReportFiltersFromDom();
-      const columns = [...document.querySelectorAll(".rep-col-cb:checked")].map(c => c.value);
+      const columns = collectReportCheckedColumns();
       await apiSaveReportPreset({
         name, entity: reportState.entity, columns,
         groupBy: reportState.groupBy, chartType: reportState.chartType,
@@ -321,10 +351,8 @@ async function renderReportBuilder() {
         reportState.groupBy = p.groupBy;
         reportState.chartType = p.chartType;
         reportState.filters = p.filters || {};
+        reportState.checkedColumns = p.columns || [];
         await renderReportBuilder();
-        [...document.querySelectorAll(".rep-col-cb")].forEach(cb => {
-          cb.checked = (p.columns || []).includes(cb.value);
-        });
         runCurrentReport();
       };
     });
@@ -336,7 +364,11 @@ async function renderReportBuilder() {
 
 async function runCurrentReport() {
   collectReportFiltersFromDom();
-  const columns = [...document.querySelectorAll(".rep-col-cb:checked")].map(c => c.value);
+  const columns = collectReportCheckedColumns();
+  if (!columns.length) {
+    showToast("Выберите хотя бы один атрибут");
+    return;
+  }
   const data = await apiRunReport({
     entity: reportState.entity,
     columns,
@@ -351,14 +383,19 @@ async function runCurrentReport() {
   }
   if (data.rows?.length) {
     const cols = columns.length ? columns : Object.keys(data.rows[0]);
-    html += `<div class="deals-table-shell"><table class="deals-table deals-table-compact"><thead><tr>
-      ${cols.map(c => `<th>${escapeHtml(reportFieldLabel(c))}</th>`).join("")}</tr></thead><tbody>
+    html += `<div class="deals-table-shell"><table class="deals-table deals-table-compact" id="reports-result-table">
+      <thead><tr>
+      ${cols.map(c => `<th data-col="${escapeHtml(c)}">${escapeHtml(reportFieldLabel(c))}</th>`).join("")}</tr></thead><tbody>
       ${data.rows.slice(0, 200).map(r => `<tr>${cols.map(c => `<td>${escapeHtml(formatReportCell(c, r[c]))}</td>`).join("")}</tr>`).join("")}
     </tbody></table></div>`;
   } else {
     html += `<p class="muted">Нет данных</p>`;
   }
   res.innerHTML = html;
+  if (typeof initTableColumnResize === "function") {
+    const tbl = document.getElementById("reports-result-table");
+    if (tbl) initTableColumnResize(tbl, "itmen_report_col_widths");
+  }
 }
 
 function formatReportCell(key, val) {

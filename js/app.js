@@ -19,6 +19,8 @@ let dealModalOpening = false;
 let metricsCache = null;
 let activePage = "panel";
 let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
+let dashboardAmoFilters = {};
+let dashboardFilterOpen = false;
 const INACTIVE_OWNERS = ["Павел Витков"];
 let dashboardMineOnly = localStorage.getItem("itmen_dash_mine") === "1";
 let dashboardEventsBound = false;
@@ -64,6 +66,9 @@ function getDashboardDeals() {
   if (dashboardFilters.budgetStatus?.length) {
     const selected = new Set(dashboardFilters.budgetStatus);
     deals = deals.filter(d => selected.has(d.budgetStatus || "Неизвестно"));
+  }
+  if (typeof dealMatchesAmoFilters === "function") {
+    deals = deals.filter(d => dealMatchesAmoFilters(d, dashboardAmoFilters));
   }
   return deals;
 }
@@ -195,10 +200,13 @@ function closeDashMultiselectPanels(except) {
 }
 
 function dashFiltersActive() {
+  const amoN = typeof amoFilterActiveCount === "function"
+    ? amoFilterActiveCount(dashboardAmoFilters, getKanbanFilterCols())
+    : 0;
   return dashboardFilters.owner?.length || dashboardFilters.category?.length
     || dashboardFilters.budgetPeriod?.length || dashboardFilters.stage?.length
     || dashboardFilters.partner?.length || dashboardFilters.commitStatus?.length
-    || dashboardFilters.budgetStatus?.length;
+    || dashboardFilters.budgetStatus?.length || amoN > 0;
 }
 
 function bindDashboardEvents() {
@@ -232,7 +240,33 @@ function bindDashboardEvents() {
   el.addEventListener("click", e => {
     if (e.target.id === "dash-clear-filters") {
       dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
+      dashboardAmoFilters = {};
+      dashboardFilterOpen = false;
       renderPanel(getDashboardMetrics());
+      return;
+    }
+    if (e.target.id === "dash-filters-btn") {
+      e.stopPropagation();
+      dashboardFilterOpen = !dashboardFilterOpen;
+      const pop = document.getElementById("dash-filter-pop");
+      if (!pop) return;
+      if (dashboardFilterOpen) {
+        pop.hidden = false;
+        mountAmoFilterPanel(pop, {
+          filters: dashboardAmoFilters,
+          deals: state?.deals || [],
+          onApply: f => {
+            dashboardAmoFilters = { ...f };
+            dashboardFilterOpen = false;
+            pop.hidden = true;
+            invalidateMetricsCache();
+            renderPanel(getDashboardMetrics());
+          },
+          onReset: () => { dashboardAmoFilters = {}; },
+        });
+      } else {
+        pop.hidden = true;
+      }
       return;
     }
     const toggle = e.target.closest(".dash-ms-toggle");
@@ -708,6 +742,9 @@ function renderPanel(m) {
   const commitOptions = dashCommitOptions();
   const budgetStatusOptions = dashBudgetStatusOptions();
   const compDealCount = m.dealsWithCompetitors ?? 0;
+  const amoFilterN = typeof amoFilterActiveCount === "function"
+    ? amoFilterActiveCount(dashboardAmoFilters, getKanbanFilterCols())
+    : 0;
   const compDealLabel = formatRuDealsCount(compDealCount, "с конкурентами");
   const maxCommit = Math.max(1, ...Object.values(m.commitCounts || {}));
   const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
@@ -727,6 +764,10 @@ function renderPanel(m) {
       ${renderDashFilterField("Партнёр", renderDashMultiselect("partner", partnerOptions, dashboardFilters.partner))}
       ${renderDashFilterField("Коммит", renderDashMultiselect("commitStatus", commitOptions, dashboardFilters.commitStatus))}
       ${renderDashFilterField("Бюджет", renderDashMultiselect("budgetStatus", budgetStatusOptions, dashboardFilters.budgetStatus))}
+      <div class="amo-filter-anchor">
+        <button type="button" class="btn btn-sm${dashboardFilterOpen ? " btn-primary" : ""}" id="dash-filters-btn">🔍 Фильтры${amoFilterN ? ` (${amoFilterN})` : ""}</button>
+        <div class="amo-filter-pop" id="dash-filter-pop" ${dashboardFilterOpen ? "" : "hidden"}></div>
+      </div>
       ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
@@ -1234,6 +1275,10 @@ async function openDealModalAsync(idx) {
   if (dealModalOpening) return;
   dealModalOpening = true;
   const token = ++dealModalOpenToken;
+  dealModalTab = "passport";
+  dealCrmCache = {};
+  dealPassportHtml = "";
+  setDealModalDealId("");
 
   const modal = document.getElementById("deal-modal");
   const modalTitle = modal?.querySelector(".modal-header h3");
@@ -1279,7 +1324,7 @@ async function openDealModalAsync(idx) {
     if (token !== dealModalOpenToken) return;
 
     const editable = idx == null ? true : canEditDeal(d);
-    modal.querySelector(".modal-body").innerHTML = `
+    const passportHtml = `
     <div class="form-section">
       <div class="form-section-title">Основное</div>
       <div class="form-grid">
@@ -1338,13 +1383,26 @@ async function openDealModalAsync(idx) {
       ${renderScoreSection(d, modalSuggestion)}
     </div>`;
 
-    toggleBudgetPlannedDate();
-    toggleLossReasonField();
-    applyDealModalReadOnly(editable);
-    dealModalTab = "passport";
-    if (typeof renderDealModalTabs === "function") renderDealModalTabs();
+    if (token !== dealModalOpenToken) return;
+
+    dealPassportHtml = passportHtml;
+    setDealModalDealId(d.id || "");
+
+    const activeTab = dealModalTab;
+    if (activeTab === "passport") {
+      modal.querySelector(".modal-body").innerHTML = passportHtml;
+      toggleBudgetPlannedDate();
+      toggleLossReasonField();
+      applyDealModalReadOnly(editable);
+      renderDealModalTabs();
+      storeDealPassportHtml();
+    } else {
+      dealModalTab = "passport";
+      renderDealModalTabs();
+      if (typeof switchDealTab === "function") await switchDealTab(activeTab);
+    }
+
     if (typeof initDealModalTabs === "function") initDealModalTabs();
-    if (typeof storeDealPassportHtml === "function") storeDealPassportHtml();
     if (editable && isNew && window.ITMEN_AUTH?.user?.managerName) {
       const ownerEl = document.getElementById("f-owner");
       if (ownerEl && !ownerEl.value) ownerEl.value = window.ITMEN_AUTH.user.managerName;
@@ -1611,6 +1669,9 @@ function closeModal(id) {
     dealModalOpenToken++;
     dealModalOpening = false;
     dealModalTab = "passport";
+    dealPassportHtml = "";
+    dealCrmCache = {};
+    setDealModalDealId("");
   }
   document.getElementById(id)?.classList.remove("open");
 }

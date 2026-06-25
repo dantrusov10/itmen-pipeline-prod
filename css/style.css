@@ -1414,6 +1414,19 @@ body.page-deals-active .deals-table-hint {
   flex-direction: column;
   max-height: min(420px, 70vh);
 }
+.amo-filter-search-wrap {
+  flex-shrink: 0;
+  padding: .5rem .75rem .25rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+.amo-f-search {
+  width: 100%;
+  padding: .35rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .82rem;
+}
+.amo-f-empty { padding: .75rem; font-size: .82rem; }
 .amo-filter-scroll { overflow-y: auto; flex: 1; padding: .35rem 0; }
 .amo-f-row { border-bottom: 1px solid #f1f5f9; }
 .amo-f-head {
@@ -1491,26 +1504,68 @@ body.page-deals-active .deals-table-hint {
 .kanban-config-panel { margin-top: 1rem; }
 .kanban-config-modal .modal { max-width: 520px; }
 .kanban-config-modal .kanban-config-list { max-height: 50vh; overflow-y: auto; }
-.rep-filters { margin-top: 1rem; }
-.rep-filter-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
-.rep-filter-row { border-bottom: 1px solid #e2e8f0; }
-.rep-filter-row:last-child { border-bottom: none; }
-.rep-filter-head {
-  width: 100%;
-  text-align: left;
-  padding: .45rem .75rem;
-  border: none;
-  background: transparent;
-  font-size: .84rem;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--navy);
-}
-.rep-filter-head:hover { background: #f1f5f9; }
-.rep-filter-body { padding: 0 .75rem .55rem; }
-.rep-filter-range { display: flex; align-items: center; gap: .35rem; }
-.rep-filter-range input { width: 6rem; }
 .rep-filter-ms { max-height: 120px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: .25rem; background: #fff; }
+.rep-unified { margin-top: 1rem; }
+.rep-unified-search {
+  width: 100%;
+  max-width: 360px;
+  margin: .35rem 0 .65rem;
+  padding: .4rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .84rem;
+}
+.rep-unified-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+.rep-attr-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.rep-attr-table th, .rep-attr-table td {
+  padding: .45rem .6rem;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: middle;
+  text-align: left;
+}
+.rep-attr-table thead th { background: #f8fafc; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+.rep-th-check { width: 2rem; }
+.rep-attr-name { font-weight: 600; white-space: nowrap; min-width: 8rem; }
+.rep-filter-cell { min-width: 12rem; }
+.rep-filter-range.inline { display: flex; align-items: center; gap: .35rem; }
+.rep-filter-range.inline input { width: 5.5rem; }
+.rep-ms-filter { position: relative; display: inline-block; }
+.rep-ms-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 120;
+  min-width: 220px;
+  max-width: 280px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  padding: .35rem;
+}
+.rep-ms-filter.open .rep-ms-toggle { border-color: var(--navy); }
+
+.col-resizable { position: relative; }
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+.col-resize-handle:hover { background: rgba(37, 99, 235, .25); }
+body.col-resizing { cursor: col-resize; user-select: none; }
+body.col-resizing * { cursor: col-resize !important; }
+
 .kanban-config-list { list-style: none; padding: 0; margin: .5rem 0; }
 .kanban-config-list li { display: flex; align-items: center; gap: .5rem; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: .35rem; background: #fff; cursor: grab; }
 .kanban-config-list li label { display: flex; align-items: center; gap: .45rem; flex: 1; margin: 0; font-size: .88rem; cursor: pointer; }

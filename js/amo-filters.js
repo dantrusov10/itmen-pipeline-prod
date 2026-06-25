@@ -71,8 +71,11 @@ function dealMatchesAmoFilters(d, filters, cols) {
 }
 
 function renderAmoFilterPanelHTML(opts) {
-  const { filters, draft, cols, deals, expandedKey } = opts;
-  const columns = cols || [];
+  const { filters, draft, cols, deals, expandedKey, fieldSearch } = opts;
+  const q = (fieldSearch || "").trim().toLowerCase();
+  const columns = (cols || []).filter(col =>
+    !q || col.label.toLowerCase().includes(q) || col.key.toLowerCase().includes(q)
+  );
   const rows = columns.map(col => {
     const isRange = amoFilterIsRange(col);
     const isOpen = expandedKey === col.key;
@@ -112,7 +115,10 @@ function renderAmoFilterPanelHTML(opts) {
   }).join("");
 
   return `<div class="amo-filter-panel">
-    <div class="amo-filter-scroll">${rows}</div>
+    <div class="amo-filter-search-wrap">
+      <input type="search" class="amo-f-search" placeholder="Поиск поля…" value="${escapeHtml(fieldSearch || "")}">
+    </div>
+    <div class="amo-filter-scroll">${rows || `<p class="muted amo-f-empty">Ничего не найдено</p>`}</div>
     <div class="amo-filter-foot">
       <button type="button" class="btn btn-primary btn-sm amo-f-apply">Применить</button>
       <button type="button" class="btn btn-sm amo-f-reset">Сбросить</button>
@@ -126,11 +132,12 @@ function mountAmoFilterPanel(hostEl, opts) {
   const deals = opts.deals || (state?.deals || []);
   let draft = structuredClone(opts.filters || {});
   let expandedKey = opts.expandedKey || null;
+  let fieldSearch = opts.fieldSearch || "";
 
   const paint = (opts = {}) => {
     const scrollEl = hostEl.querySelector(".amo-filter-scroll");
     const scrollTop = opts.preserveScroll && scrollEl ? scrollEl.scrollTop : 0;
-    hostEl.innerHTML = renderAmoFilterPanelHTML({ filters: opts.filters, draft, cols, deals, expandedKey });
+    hostEl.innerHTML = renderAmoFilterPanelHTML({ filters: opts.filters, draft, cols, deals, expandedKey, fieldSearch });
     bind();
     if (opts.preserveScroll) {
       const newScrollEl = hostEl.querySelector(".amo-filter-scroll");
@@ -139,6 +146,10 @@ function mountAmoFilterPanel(hostEl, opts) {
   };
 
   const bind = () => {
+    hostEl.querySelector(".amo-f-search")?.addEventListener("input", e => {
+      fieldSearch = e.target.value;
+      paint({ preserveScroll: false });
+    });
     hostEl.querySelectorAll(".amo-f-head").forEach(btn => {
       btn.onclick = () => {
         expandedKey = expandedKey === btn.closest(".amo-f-row")?.dataset.key
