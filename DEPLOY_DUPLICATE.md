@@ -4,8 +4,8 @@
 
 | | PROD (менеджеры) | STAGING (разработка) |
 |---|---|---|
-| **GitHub** | [itmen-pipeline](https://github.com/dantrusov10/itmen-pipeline) | [itmen-pipeline-staging](https://github.com/dantrusov10/itmen-pipeline-staging) |
-| **GitHub Pages** | https://dantrusov10.github.io/itmen-pipeline/ | https://dantrusov10.github.io/itmen-pipeline-staging/ |
+| **GitHub** | [itmen-pipeline-old](https://github.com/dantrusov10/itmen-pipeline-old) | [itmen-pipeline-prod](https://github.com/dantrusov10/itmen-pipeline-prod) |
+| **GitHub Pages** | https://dantrusov10.github.io/itmen-pipeline-old/ | — (сервер nwlvl.ru) |
 | **Google Таблица** | `1pN937eK0xg4svGMHCdBfUhr3iAihuDl_fkj8U_XrL2g` | `1AbPqam0TkVdbtmyQ_KdjLGXw93qNSs4Svug8pMfP1_c` |
 | **GAS** | свой URL в `gas-config.js` | свой URL в `gas-config.js` |
 | **Кто работает** | менеджеры | только разработка |
@@ -113,8 +113,8 @@ python tools/verify_environments.py
 
 | Репозиторий | Назначение |
 |---|---|
-| `dantrusov10/itmen-pipeline` | PROD — менеджеры, только стабильные правки |
-| `dantrusov10/itmen-pipeline-staging` | STAGING — PocketBase, новый API, эксперименты |
+| `dantrusov10/itmen-pipeline-old` | LEGACY — Google Таблицы / GAS, GitHub Pages |
+| `dantrusov10/itmen-pipeline-prod` | PROD — PocketBase + сервер (itmen-pipeline.nwlvl.ru) |
 
 Код изначально одинаковый. Отличаются только `js/gas-config.js` и баннер окружения.
 
