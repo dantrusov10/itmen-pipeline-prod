@@ -12,11 +12,15 @@ const DEAL_TABS = [
 ];
 
 function initDealModalTabs() {
-  const bar = document.getElementById("deal-tabs");
-  if (!bar || bar.dataset.bound) return;
-  bar.dataset.bound = "1";
-  bar.querySelectorAll(".deal-tab").forEach(btn => {
-    btn.addEventListener("click", () => switchDealTab(btn.dataset.tab));
+  const wrap = document.getElementById("deal-tabs-wrap");
+  if (!wrap || wrap.dataset.bound) return;
+  wrap.dataset.bound = "1";
+  wrap.addEventListener("click", e => {
+    const btn = e.target.closest(".deal-tab");
+    if (!btn?.dataset.tab) return;
+    e.preventDefault();
+    e.stopPropagation();
+    switchDealTab(btn.dataset.tab);
   });
 }
 
@@ -45,11 +49,12 @@ function restorePassportTab() {
 }
 
 async function switchDealTab(tab) {
+  if (!tab) return;
   const body = document.querySelector("#deal-modal .modal-body");
-  if (dealModalTab === "passport" && body) storeDealPassportHtml();
+  if (!body) return;
+  if (dealModalTab === "passport" && tab !== "passport") storeDealPassportHtml();
   dealModalTab = tab;
   renderDealModalTabs();
-  if (!body) return;
   if (tab === "passport") {
     restorePassportTab();
     return;
@@ -71,7 +76,9 @@ async function switchDealTab(tab) {
     else if (tab === "info") body.innerHTML = renderInfoTab(dealId, crm);
     bindDealCrmTabEvents(dealId, tab);
   } catch (e) {
-    body.innerHTML = `<p class="muted" style="color:#b45309">${escapeHtml(e.message)}</p>`;
+    console.error("switchDealTab:", e);
+    body.innerHTML = `<p class="muted" style="color:#b45309">${escapeHtml(e.message || String(e))}</p>`;
+    if (typeof showToast === "function") showToast("Ошибка загрузки вкладки");
   }
 }
 

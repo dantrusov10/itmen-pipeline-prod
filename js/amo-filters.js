@@ -100,7 +100,7 @@ function renderAmoFilterPanelHTML(opts) {
             <button type="button" class="btn btn-sm amo-f-none" data-key="${col.key}">Снять</button>
           </div>
           <div class="amo-f-ms-list">${show.map(o =>
-            `<label class="amo-f-opt"><input type="checkbox" class="amo-f-cb" data-key="${col.key}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}> ${escapeHtml(o)}</label>`
+            `<label class="amo-f-opt"><input type="checkbox" class="amo-f-cb" data-key="${col.key}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}><span>${escapeHtml(o)}</span></label>`
           ).join("")}${options.length > 80 ? `<p class="muted" style="font-size:.75rem;padding:.25rem">+ ещё ${options.length - 80}</p>` : ""}</div>
         </div>`;
       }

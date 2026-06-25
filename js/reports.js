@@ -89,6 +89,137 @@ const REPORT_FIELD_LABELS = {
   at: "Дата",
 };
 
+const REPORT_NUMERIC_FIELDS = new Set([
+  "amount", "expectedBudget", "partnerDiscount", "clientDiscount", "manualProb",
+  "score", "weighted", "daysTo", "daysSince", "productPct", "pilotPct", "size",
+  "budgetPlannedMonth", "budgetPlannedYear",
+]);
+
+function reportFieldFilterType(field) {
+  if (REPORT_NUMERIC_FIELDS.has(field)) return "range";
+  if (field === "archived" || field === "hasPains" || field === "isPrimary") return "bool";
+  return "multiselect";
+}
+
+function reportDistinctValues(entity, field) {
+  if (entity === "deals" && state?.deals) {
+    const set = new Set();
+    (state.deals || []).forEach(d => {
+      const en = typeof enrichDeal === "function" ? enrichDeal(d) : d;
+      let v = en[field];
+      if (field === "commitLabel") v = typeof commitLabel === "function" ? commitLabel(en.commitStatus) : v;
+      set.add(String(v ?? "—"));
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  }
+  const listMap = {
+    owner: state?.lists?.owners,
+    stage: typeof pipelineStageOptions === "function" ? pipelineStageOptions() : state?.lists?.stages,
+    industry: state?.lists?.industries,
+    partner: state?.lists?.partners,
+    budgetStatus: state?.lists?.budgetStatus,
+    budgetPeriod: state?.lists?.budgetPeriods,
+    status: ["open", "done", "cancelled"],
+    type: ["comment", "stage_change", "task_created", "task_done", "file_uploaded"],
+  };
+  if (listMap[field]) return listMap[field];
+  return [];
+}
+
+function renderReportFiltersUI(entity, fields) {
+  const filters = reportState.filters || {};
+  const expanded = reportState.filterExpanded || null;
+  const rows = fields.map(field => {
+    const type = reportFieldFilterType(field);
+    const isOpen = expanded === field;
+    const hasVal = type === "range"
+      ? (filters[`${field}__from`] || filters[`${field}__to`])
+      : type === "bool"
+        ? filters[field] != null && filters[field] !== ""
+        : (Array.isArray(filters[field]) && filters[field].length);
+    let body = "";
+    if (isOpen) {
+      if (type === "range") {
+        body = `<div class="rep-filter-body rep-filter-range">
+          <input type="number" class="rep-f-from" data-field="${field}" placeholder="от" value="${escapeHtml(filters[`${field}__from`] ?? "")}">
+          <span class="muted">—</span>
+          <input type="number" class="rep-f-to" data-field="${field}" placeholder="до" value="${escapeHtml(filters[`${field}__to`] ?? "")}">
+        </div>`;
+      } else if (type === "bool") {
+        body = `<div class="rep-filter-body">
+          <select class="rep-f-bool" data-field="${field}">
+            <option value="">Все</option>
+            <option value="1"${filters[field] === "1" || filters[field] === true ? " selected" : ""}>Да</option>
+            <option value="0"${filters[field] === "0" || filters[field] === false ? " selected" : ""}>Нет</option>
+          </select>
+        </div>`;
+      } else {
+        const options = reportDistinctValues(entity, field);
+        const sel = new Set(Array.isArray(filters[field]) ? filters[field] : []);
+        body = `<div class="rep-filter-body rep-filter-ms">
+          ${options.length ? options.map(o =>
+            `<label class="deals-ms-opt"><input type="checkbox" class="rep-f-cb" data-field="${field}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}><span>${escapeHtml(o)}</span></label>`
+          ).join("") : `<span class="muted">Нет значений для фильтра</span>`}
+        </div>`;
+      }
+    }
+    return `<div class="rep-filter-row${isOpen ? " open" : ""}${hasVal ? " active" : ""}" data-field="${field}">
+      <button type="button" class="rep-filter-head">${escapeHtml(reportFieldLabel(field))}${hasVal ? " ●" : ""}</button>
+      ${body}
+    </div>`;
+  }).join("");
+  return `<div class="rep-filters">
+    <label>Фильтры по атрибутам</label>
+    <div class="rep-filter-list">${rows}</div>
+  </div>`;
+}
+
+function collectReportFiltersFromDom() {
+  const filters = { ...(reportState.filters || {}) };
+  document.querySelectorAll(".rep-f-from").forEach(inp => {
+    const k = `${inp.dataset.field}__from`;
+    if (inp.value !== "") filters[k] = inp.value;
+    else delete filters[k];
+  });
+  document.querySelectorAll(".rep-f-to").forEach(inp => {
+    const k = `${inp.dataset.field}__to`;
+    if (inp.value !== "") filters[k] = inp.value;
+    else delete filters[k];
+  });
+  document.querySelectorAll(".rep-f-bool").forEach(sel => {
+    if (sel.value !== "") filters[sel.dataset.field] = sel.value;
+    else delete filters[sel.dataset.field];
+  });
+  const msFields = new Set([...document.querySelectorAll(".rep-f-cb")].map(cb => cb.dataset.field));
+  msFields.forEach(field => {
+    const vals = [...document.querySelectorAll(`.rep-f-cb[data-field="${field}"]:checked`)].map(cb => cb.value);
+    if (vals.length) filters[field] = vals;
+    else delete filters[field];
+  });
+  reportState.filters = filters;
+  return filters;
+}
+
+function bindReportFilterEvents() {
+  document.querySelectorAll(".rep-filter-head").forEach(btn => {
+    btn.onclick = () => {
+      const field = btn.closest(".rep-filter-row")?.dataset.field;
+      reportState.filterExpanded = reportState.filterExpanded === field ? null : field;
+      collectReportFiltersFromDom();
+      renderReportBuilder();
+    };
+  });
+  document.querySelectorAll(".rep-f-from, .rep-f-to").forEach(inp => {
+    inp.oninput = () => collectReportFiltersFromDom();
+  });
+  document.querySelectorAll(".rep-f-bool").forEach(sel => {
+    sel.onchange = () => collectReportFiltersFromDom();
+  });
+  document.querySelectorAll(".rep-f-cb").forEach(cb => {
+    cb.onchange = () => collectReportFiltersFromDom();
+  });
+}
+
 function reportFieldLabel(key) {
   if (typeof getKanbanFilterCols === "function") {
     const col = getKanbanFilterCols().find(c => c.key === key);
@@ -145,9 +276,10 @@ async function renderReportBuilder() {
       <label>Колонки <span class="muted">(${fields.length} атрибутов)</span></label>
       <input type="search" id="rep-col-search" placeholder="Поиск атрибута…" value="${escapeHtml(colSearch)}" style="width:100%;max-width:320px;margin:.35rem 0 .5rem">
       <div class="rep-cols">${filteredFields.map(f =>
-        `<label class="deals-ms-opt"><input type="checkbox" class="rep-col-cb" value="${f}" checked> ${reportFieldLabel(f)}</label>`).join("")}
+        `<label class="deals-ms-opt"><input type="checkbox" class="rep-col-cb" value="${f}" checked><span>${escapeHtml(reportFieldLabel(f))}</span></label>`).join("")}
       ${!filteredFields.length ? "<span class='muted'>Ничего не найдено</span>" : ""}
     </div>
+    ${renderReportFiltersUI(reportState.entity, fields)}
     <div style="margin-top:1rem;display:flex;gap:.5rem">
       <button type="button" class="btn btn-primary btn-sm" id="rep-run">Построить</button>
       <button type="button" class="btn btn-sm" id="rep-save">Сохранить пресет</button>
@@ -167,9 +299,11 @@ async function renderReportBuilder() {
     document.getElementById("rep-group").onchange = e => { reportState.groupBy = e.target.value; };
     document.getElementById("rep-chart").onchange = e => { reportState.chartType = e.target.value; };
     document.getElementById("rep-run").onclick = runCurrentReport;
+    bindReportFilterEvents();
     document.getElementById("rep-save").onclick = async () => {
       const name = prompt("Название пресета");
       if (!name) return;
+      collectReportFiltersFromDom();
       const columns = [...document.querySelectorAll(".rep-col-cb:checked")].map(c => c.value);
       await apiSaveReportPreset({
         name, entity: reportState.entity, columns,
@@ -201,6 +335,7 @@ async function renderReportBuilder() {
 }
 
 async function runCurrentReport() {
+  collectReportFiltersFromDom();
   const columns = [...document.querySelectorAll(".rep-col-cb:checked")].map(c => c.value);
   const data = await apiRunReport({
     entity: reportState.entity,

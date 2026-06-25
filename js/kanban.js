@@ -10,7 +10,7 @@ async function loadKanbanStages() {
   try {
     const { stages } = await apiKanbanConfig();
     if (Array.isArray(stages) && stages.length) {
-      return stages.filter(s => all.includes(s));
+      return stages;
     }
   } catch (_) { /* offline */ }
   return all;
@@ -86,7 +86,7 @@ async function renderKanban() {
         <button type="button" class="btn btn-sm${kanbanFilterOpen ? " btn-primary" : ""}" id="kanban-filters-btn">🔍 Фильтры${filterN ? ` (${filterN})` : ""}</button>
         <div class="amo-filter-pop" id="kanban-filter-pop" ${kanbanFilterOpen ? "" : "hidden"}></div>
       </div>
-      ${admin ? `<button type="button" class="btn btn-sm" id="kanban-config-btn">⚙ Столбцы</button>` : ""}
+      ${admin ? `<button type="button" class="btn btn-sm" id="kanban-config-btn">⚙ Настройки</button>` : ""}
       <span class="muted kanban-hint" id="kanban-meta">${deals.length} сделок</span>
       <button type="button" class="btn btn-sm" onclick="openDealModal()">+ Сделка</button>
     </div>
@@ -107,8 +107,7 @@ async function renderKanban() {
           </div>
         </div>`;
       }).join("")}
-    </div>
-    ${admin ? `<div id="kanban-config-panel" class="kanban-config-panel" hidden></div>` : ""}`;
+    </div>`;
 
   document.getElementById("kanban-search")?.addEventListener("input", e => {
     kanbanFilters.q = e.target.value;
@@ -156,52 +155,93 @@ function kanbanCloseFilterOnOutside(e) {
 }
 
 function openKanbanConfigPanel() {
-  const panel = document.getElementById("kanban-config-panel");
-  if (!panel) return;
+  let modal = document.getElementById("kanban-config-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "kanban-config-modal";
+    modal.className = "modal-overlay kanban-config-modal";
+    modal.innerHTML = `<div class="modal" role="dialog" aria-labelledby="kanban-config-title">
+      <div class="modal-header">
+        <h3 id="kanban-config-title">Настройка столбцов канбана</h3>
+        <button type="button" class="btn btn-sm" id="kanban-config-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body" id="kanban-config-body"></div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener("click", e => {
+      if (e.target === modal) modal.classList.remove("open");
+    });
+    modal.querySelector("#kanban-config-close")?.addEventListener("click", () => modal.classList.remove("open"));
+  }
+  const body = modal.querySelector("#kanban-config-body");
   const all = typeof pipelineStageOptions === "function"
     ? pipelineStageOptions()
     : (state?.lists?.stages || []);
-  const visible = new Set(kanbanStages || all);
-  const hidden = all.filter(s => !visible.has(s));
-  panel.hidden = false;
-  panel.innerHTML = `
-    <div class="card"><div class="card-body">
-      <h4>Настройка столбцов канбана</h4>
-      <ul class="kanban-config-list" id="kanban-config-list">
-        ${(kanbanStages || all).map(st => `<li draggable="true" data-stage="${escapeHtml(st)}">
-          <span class="drag-handle">☰</span>
-          <label><input type="checkbox" class="kanban-col-vis" checked> ${escapeHtml(st)}</label>
-        </li>`).join("")}
-        ${hidden.map(st => `<li draggable="true" data-stage="${escapeHtml(st)}" class="hidden-col">
-          <span class="drag-handle">☰</span>
-          <label><input type="checkbox" class="kanban-col-vis"> ${escapeHtml(st)}</label>
-        </li>`).join("")}
-      </ul>
-      <div style="margin-top:1rem;display:flex;gap:.5rem">
-        <button type="button" class="btn btn-primary btn-sm" id="kanban-config-save">Сохранить</button>
-        <button type="button" class="btn btn-sm" id="kanban-config-cancel">Отмена</button>
-      </div>
-    </div></div>`;
+  const visibleStages = kanbanStages || all;
+  const hidden = all.filter(s => !visibleStages.includes(s));
+  body.innerHTML = `
+    <p class="muted" style="font-size:.82rem;margin-bottom:.75rem">Перетащите строки для смены порядка. Снимите галочку, чтобы скрыть столбец.</p>
+    <ul class="kanban-config-list" id="kanban-config-list">
+      ${visibleStages.map(st => `<li draggable="true" data-stage="${escapeHtml(st)}">
+        <span class="drag-handle">☰</span>
+        <label><input type="checkbox" class="kanban-col-vis" checked> <span>${escapeHtml(st)}</span></label>
+        <button type="button" class="btn btn-sm kanban-col-del" title="Удалить столбец">✕</button>
+      </li>`).join("")}
+      ${hidden.map(st => `<li draggable="true" data-stage="${escapeHtml(st)}" class="hidden-col">
+        <span class="drag-handle">☰</span>
+        <label><input type="checkbox" class="kanban-col-vis"> <span>${escapeHtml(st)}</span></label>
+        <button type="button" class="btn btn-sm kanban-col-del" title="Удалить столбец">✕</button>
+      </li>`).join("")}
+    </ul>
+    <div style="display:flex;gap:.5rem;margin-top:.75rem;align-items:center">
+      <input type="text" id="kanban-new-stage" placeholder="Новый столбец / стадия" style="flex:1">
+      <button type="button" class="btn btn-sm" id="kanban-add-stage">+ Добавить</button>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:.5rem">
+      <button type="button" class="btn btn-primary btn-sm" id="kanban-config-save">Сохранить</button>
+      <button type="button" class="btn btn-sm" id="kanban-config-cancel">Отмена</button>
+    </div>`;
+  modal.classList.add("open");
   bindKanbanConfigDnD();
-  document.getElementById("kanban-config-save").onclick = async () => {
-    const stages = [...document.querySelectorAll("#kanban-config-list li")]
+  body.querySelector("#kanban-add-stage")?.addEventListener("click", () => {
+    const inp = body.querySelector("#kanban-new-stage");
+    const name = (inp?.value || "").trim();
+    if (!name) return;
+    const list = body.querySelector("#kanban-config-list");
+    const exists = [...list.querySelectorAll("li")].some(li => li.dataset.stage === name);
+    if (exists) { alert("Такой столбец уже есть"); return; }
+    list.insertAdjacentHTML("beforeend", `<li draggable="true" data-stage="${escapeHtml(name)}">
+      <span class="drag-handle">☰</span>
+      <label><input type="checkbox" class="kanban-col-vis" checked> <span>${escapeHtml(name)}</span></label>
+      <button type="button" class="btn btn-sm kanban-col-del" title="Удалить столбец">✕</button>
+    </li>`);
+    inp.value = "";
+    bindKanbanConfigDnD();
+  });
+  body.querySelectorAll(".kanban-col-del").forEach(btn => {
+    btn.onclick = () => btn.closest("li")?.remove();
+  });
+  body.querySelector("#kanban-config-save").onclick = async () => {
+    const stages = [...body.querySelectorAll("#kanban-config-list li")]
       .filter(li => li.querySelector(".kanban-col-vis")?.checked)
       .map(li => li.dataset.stage);
     if (!stages.length) return alert("Нужен хотя бы один столбец");
     try {
       await apiSaveKanbanConfig(stages);
       kanbanStages = stages;
-      panel.hidden = true;
+      modal.classList.remove("open");
       showToast("Столбцы сохранены");
       renderKanban();
     } catch (e) { alert(e.message); }
   };
-  document.getElementById("kanban-config-cancel").onclick = () => { panel.hidden = true; };
+  body.querySelector("#kanban-config-cancel").onclick = () => modal.classList.remove("open");
 }
 
 function bindKanbanConfigDnD() {
   let dragged = null;
-  document.querySelectorAll("#kanban-config-list li").forEach(li => {
+  const list = document.getElementById("kanban-config-list");
+  if (!list) return;
+  list.querySelectorAll("li").forEach(li => {
     li.addEventListener("dragstart", () => { dragged = li; });
     li.addEventListener("dragover", e => { e.preventDefault(); });
     li.addEventListener("drop", e => {

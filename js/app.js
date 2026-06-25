@@ -1343,6 +1343,7 @@ async function openDealModalAsync(idx) {
     applyDealModalReadOnly(editable);
     dealModalTab = "passport";
     if (typeof renderDealModalTabs === "function") renderDealModalTabs();
+    if (typeof initDealModalTabs === "function") initDealModalTabs();
     if (typeof storeDealPassportHtml === "function") storeDealPassportHtml();
     if (editable && isNew && window.ITMEN_AUTH?.user?.managerName) {
       const ownerEl = document.getElementById("f-owner");

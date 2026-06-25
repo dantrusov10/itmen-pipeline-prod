@@ -91,16 +91,47 @@ async function deletePreset(userId, presetId) {
   return { ok: true };
 }
 
-function applyFilters(rows, filters, entity) {
+function applyFilters(rows, filters) {
   let out = rows;
-  for (const [key, val] of Object.entries(filters || {})) {
+  const f = filters || {};
+  const rangeKeys = new Set();
+  Object.keys(f).forEach(k => {
+    if (k.endsWith("__from") || k.endsWith("__to")) rangeKeys.add(k.replace(/__(from|to)$/, ""));
+  });
+  rangeKeys.forEach(key => {
+    const from = f[`${key}__from`];
+    const to = f[`${key}__to`];
+    if ((from == null || from === "") && (to == null || to === "")) return;
+    out = out.filter(r => {
+      const raw = r[key];
+      const n = raw == null || raw === "" ? null : Number(raw);
+      if (n == null || !Number.isFinite(n)) return false;
+      if (from !== "" && from != null && n < Number(from)) return false;
+      if (to !== "" && to != null && n > Number(to)) return false;
+      return true;
+    });
+  });
+  for (const [key, val] of Object.entries(f)) {
+    if (key.endsWith("__from") || key.endsWith("__to")) continue;
     if (val == null || val === "") continue;
     if (Array.isArray(val)) {
-      out = out.filter(r => val.includes(r[key]));
-    } else if (typeof val === "object" && val.min != null) {
-      out = out.filter(r => (r[key] || 0) >= val.min);
-    } else if (typeof val === "object" && val.max != null) {
-      out = out.filter(r => (r[key] || 0) <= val.max);
+      if (!val.length) continue;
+      out = out.filter(r => val.includes(String(r[key] ?? "—")));
+    } else if (val === "1" || val === true) {
+      out = out.filter(r => Boolean(r[key]));
+    } else if (val === "0" || val === false) {
+      out = out.filter(r => !r[key]);
+    } else if (typeof val === "object") {
+      const from = val.from ?? val.min;
+      const to = val.to ?? val.max;
+      if (from == null && to == null) continue;
+      out = out.filter(r => {
+        const n = Number(r[key]);
+        if (!Number.isFinite(n)) return false;
+        if (from != null && from !== "" && n < Number(from)) return false;
+        if (to != null && to !== "" && n > Number(to)) return false;
+        return true;
+      });
     } else {
       out = out.filter(r => String(r[key] || "").toLowerCase().includes(String(val).toLowerCase()));
     }
@@ -207,7 +238,7 @@ async function runReport({ entity, columns, filters, groupBy }) {
       referrer: i.referrer || "",
     }));
   }
-  rows = applyFilters(rows, filters, entity);
+  rows = applyFilters(rows, filters);
   const grouped = groupRows(rows, groupBy);
   return {
     entity,
