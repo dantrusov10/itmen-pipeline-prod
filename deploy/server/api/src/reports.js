@@ -7,10 +7,32 @@ const { listAllTasks } = require("./deal-crm");
 const ENTITY_FIELDS = {
   deals: [
     "id", "customer", "owner", "stage", "industry", "amount", "expectedBudget",
-    "partner", "budgetStatus", "budgetPeriod", "taskDue", "lossReason", "archived",
+    "partner", "partnerDiscount", "clientDiscount", "manualProb", "budgetStatus",
+    "budgetPeriod", "budgetPlannedMonth", "budgetPlannedYear", "taskDue",
+    "commitStatus", "lossReason", "archived", "pains", "capabilities", "dml",
+    "nextStepType", "nextStepComment", "riskType", "riskComment", "competitors",
+    "amoId", "lastUpdate", "dealType", "hasPains", "duplicate_of",
+    "score", "category", "weighted", "quality", "daysTo", "daysSince",
+    "commitLabel", "riskFlag", "productPct", "pilotPct",
   ],
-  tasks: ["id", "dealId", "title", "assignee", "dueAt", "status", "customer", "owner"],
-  activities: ["id", "dealId", "type", "body", "author", "at"],
+  tasks: [
+    "id", "dealId", "title", "description", "assignee", "dueAt", "doneAt",
+    "reminderAt", "status", "customer", "owner", "createdBy",
+  ],
+  activities: [
+    "id", "dealId", "type", "body", "author", "authorEmail", "at",
+  ],
+  contacts: [
+    "id", "dealId", "name", "email", "phone", "role", "isPrimary",
+  ],
+  files: [
+    "id", "dealId", "label", "originalName", "size", "uploadedBy", "uploadedAt",
+  ],
+  deal_info: [
+    "dealId", "companyName", "companyInn", "companyKpp", "companyOgrn",
+    "website", "sourceChannel", "utmSource", "utmMedium", "utmCampaign",
+    "landingPage", "referrer",
+  ],
 };
 
 function mapPreset(row) {
@@ -113,21 +135,76 @@ function groupRows(rows, groupBy) {
 async function runReport({ entity, columns, filters, groupBy }) {
   let rows = [];
   if (entity === "deals") {
-    const state = await loadPipelineState({ lite: true });
-    rows = (state?.deals || []).filter(d => !d.archived);
+    const st = await loadPipelineState({ lite: false });
+    rows = (st?.deals || []).filter(d => !d.archived).map(d => ({
+      ...d,
+      score: typeof d.score === "number" ? d.score : null,
+      category: d.category || "",
+      weighted: d.weighted || 0,
+      commitLabel: d.commitLabel || d.commitStatus || "",
+    }));
   } else if (entity === "tasks") {
     rows = await listAllTasks({});
   } else if (entity === "activities") {
-    const acts = await listAll("deal_activities", { sort: "-activity_at", perPage: 500 });
-    const dealRows = await listAll("deals", { fields: "id,deal_id" });
+    const acts = await listAll("deal_activities", { sort: "-activity_at", perPage: 2000 });
+    const dealRows = await listAll("deals", { fields: "id,deal_id,customer,owner" });
     const dm = Object.fromEntries(dealRows.map(d => [d.id, d.deal_id]));
+    const dmeta = Object.fromEntries(dealRows.map(d => [d.deal_id, d]));
     rows = acts.map(a => ({
       id: a.id,
       dealId: dm[a.deal] || "",
       type: a.activity_type,
-      body: (a.body || "").slice(0, 200),
-      author: a.author,
-      at: a.activity_at,
+      body: a.body || "",
+      author: a.author || "",
+      authorEmail: a.author_email || "",
+      at: a.activity_at || a.created,
+      customer: dmeta[dm[a.deal]]?.customer || "",
+      owner: dmeta[dm[a.deal]]?.owner || "",
+    }));
+  } else if (entity === "contacts") {
+    const { listAll: la } = require("./pb-client");
+    const recs = await la("deal_contacts", { sort: "sort_order" });
+    const dealRows = await listAll("deals", { fields: "id,deal_id" });
+    const dm = Object.fromEntries(dealRows.map(d => [d.id, d.deal_id]));
+    rows = recs.map(c => ({
+      id: c.id,
+      dealId: dm[c.deal] || "",
+      name: c.name || "",
+      email: c.email || "",
+      phone: c.phone || "",
+      role: c.role || "",
+      isPrimary: Boolean(c.is_primary),
+    }));
+  } else if (entity === "files") {
+    const recs = await listAll("deal_files", { sort: "-created" });
+    const dealRows = await listAll("deals", { fields: "id,deal_id" });
+    const dm = Object.fromEntries(dealRows.map(d => [d.id, d.deal_id]));
+    rows = recs.map(f => ({
+      id: f.id,
+      dealId: dm[f.deal] || "",
+      label: f.label || "",
+      originalName: f.original_name || "",
+      size: f.size || 0,
+      uploadedBy: f.uploaded_by || "",
+      uploadedAt: f.uploaded_at || "",
+    }));
+  } else if (entity === "deal_info") {
+    const recs = await listAll("deal_info");
+    const dealRows = await listAll("deals", { fields: "id,deal_id" });
+    const dm = Object.fromEntries(dealRows.map(d => [d.id, d.deal_id]));
+    rows = recs.map(i => ({
+      dealId: dm[i.deal] || "",
+      companyName: i.company_name || "",
+      companyInn: i.company_inn || "",
+      companyKpp: i.company_kpp || "",
+      companyOgrn: i.company_ogrn || "",
+      website: i.website || "",
+      sourceChannel: i.source_channel || "",
+      utmSource: i.utm_source || "",
+      utmMedium: i.utm_medium || "",
+      utmCampaign: i.utm_campaign || "",
+      landingPage: i.landing_page || "",
+      referrer: i.referrer || "",
     }));
   }
   rows = applyFilters(rows, filters, entity);

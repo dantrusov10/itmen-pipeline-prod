@@ -11,27 +11,26 @@ const DEAL_TABS = [
   { id: "contacts", label: "Контакты" },
 ];
 
-function storeDealPassportHtml() {
-  const body = document.querySelector("#deal-modal .modal-body");
-  if (body) dealPassportHtml = body.innerHTML;
+function initDealModalTabs() {
+  const bar = document.getElementById("deal-tabs");
+  if (!bar || bar.dataset.bound) return;
+  bar.dataset.bound = "1";
+  bar.querySelectorAll(".deal-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchDealTab(btn.dataset.tab));
+  });
 }
 
 function renderDealModalTabs() {
   const bar = document.getElementById("deal-tabs");
-  const wrap = document.getElementById("deal-tabs-wrap");
   if (!bar) return;
-  if (wrap) wrap.hidden = false;
-  bar.innerHTML = DEAL_TABS.map(t =>
-    `<button type="button" class="deal-tab${dealModalTab === t.id ? " active" : ""}" data-tab="${t.id}" role="tab">${t.label}</button>`
-  ).join("");
   bar.querySelectorAll(".deal-tab").forEach(btn => {
-    btn.onclick = () => switchDealTab(btn.dataset.tab);
+    btn.classList.toggle("active", btn.dataset.tab === dealModalTab);
   });
 }
 
-function hideDealModalTabs() {
-  const wrap = document.getElementById("deal-tabs-wrap");
-  if (wrap) wrap.hidden = true;
+function storeDealPassportHtml() {
+  const body = document.querySelector("#deal-modal .modal-body");
+  if (body) dealPassportHtml = body.innerHTML;
 }
 
 function restorePassportTab() {
@@ -231,8 +230,7 @@ function bindDealCrmTabEvents(dealId, tab) {
       let dueAt = document.getElementById("task-due")?.value || null;
       if (dueAt && dueAt.length === 16) dueAt += ":00";
       await apiSaveTask(dealId, {
-        title,
-        dueAt,
+        title, dueAt,
         assignee: document.getElementById("task-assignee")?.value || "",
         status: "open",
       });
@@ -311,8 +309,10 @@ function invalidateDealCrmCache(dealId) {
   else dealCrmCache = {};
 }
 
+document.addEventListener("DOMContentLoaded", () => initDealModalTabs());
+
 window.renderDealModalTabs = renderDealModalTabs;
-window.hideDealModalTabs = hideDealModalTabs;
+window.initDealModalTabs = initDealModalTabs;
 window.switchDealTab = switchDealTab;
 window.storeDealPassportHtml = storeDealPassportHtml;
 window.invalidateDealCrmCache = invalidateDealCrmCache;

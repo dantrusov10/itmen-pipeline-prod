@@ -381,6 +381,7 @@ let dealsTableSort = { key: "amount", dir: "desc" };
 let dealsTableColFilters = {};
 let dealsTableSearch = "";
 let dealsTableBound = false;
+let dealsFilterOpen = false;
 
 function parseFilterNum(v) {
   if (v == null || v === "") return null;
@@ -1057,12 +1058,19 @@ function renderDealsTable(deals) {
   const el = document.getElementById("page-deals");
   if (!el) return;
   const admin = typeof isAdmin === "function" ? isAdmin() : true;
+  const filterN = typeof amoFilterActiveCount === "function"
+    ? amoFilterActiveCount(dealsTableColFilters, DEALS_TABLE_COLS)
+    : 0;
   el.innerHTML = `
     <div class="deals-toolbar">
       <button class="btn btn-primary" onclick="openDealModal()">+ Добавить</button>
       ${admin ? `<label class="btn" style="cursor:pointer">⬆️ Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>` : ""}
       <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск…" value="${escapeHtml(dealsTableSearch)}">
-      <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить фильтры</button>
+      <div class="amo-filter-anchor">
+        <button type="button" class="btn btn-sm${dealsFilterOpen ? " btn-primary" : ""}" id="deals-filters-btn">🔍 Фильтры${filterN ? ` (${filterN})` : ""}</button>
+        <div class="amo-filter-pop" id="deals-filter-pop" ${dealsFilterOpen ? "" : "hidden"}></div>
+      </div>
+      <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить</button>
       <button type="button" class="btn btn-sm" id="deals-columns-btn" title="Настроить видимые колонки">⚙ Колонки</button>
       <button type="button" class="btn btn-sm" id="deals-export-excel" title="Экспорт текущего среза в Excel">⬇️ Excel</button>
       ${admin ? `<button type="button" class="btn btn-sm" id="deals-reload-server" title="Сбросить кэш и загрузить все сделки с сервера">⟳ С сервера</button>` : ""}
@@ -1075,7 +1083,7 @@ function renderDealsTable(deals) {
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
           <tr>${admin ? "<th class=\"col-bulk\"><input type=\"checkbox\" id=\"deals-bulk-all\" title=\"Выбрать все\"></th>" : ""}${getVisibleDealsCols().map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
-          <tr class="deals-filter-row">${admin ? "<th></th>" : ""}${getVisibleDealsCols().map(c =>
+          <tr class="deals-filter-row deals-filter-row-hidden">${admin ? "<th></th>" : ""}${getVisibleDealsCols().map(c =>
             `<th>${renderColFilter(c, deals)}</th>`
           ).join("")}<th></th></tr>
         </thead>
@@ -1087,6 +1095,33 @@ function renderDealsTable(deals) {
     const f = e.target.files[0];
     if (f) importExcelFile(f);
     e.target.value = "";
+  });
+
+  document.getElementById("deals-filters-btn")?.addEventListener("click", e => {
+    e.stopPropagation();
+    dealsFilterOpen = !dealsFilterOpen;
+    const pop = document.getElementById("deals-filter-pop");
+    if (!pop) return;
+    if (dealsFilterOpen) {
+      pop.hidden = false;
+      mountAmoFilterPanel(pop, {
+        filters: dealsTableColFilters,
+        deals,
+        onApply: f => {
+          dealsTableColFilters = { ...f };
+          dealsFilterOpen = false;
+          pop.hidden = true;
+          dealsTablePreset = null;
+          updateDealsTableBody(getEnrichedDeals());
+          syncDealsReportHashFromTable();
+          renderDealsFilterBanner();
+          renderDealsTable(getEnrichedDeals());
+        },
+        onReset: () => { dealsTableColFilters = {}; },
+      });
+    } else {
+      pop.hidden = true;
+    }
   });
 
   bindDealsTableEvents();

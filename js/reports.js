@@ -5,6 +5,9 @@ const REPORT_ENTITY_LABELS = {
   deals: "Сделки",
   tasks: "Задачи",
   activities: "События",
+  contacts: "Контакты",
+  files: "Файлы",
+  deal_info: "Информация по клиенту",
 };
 
 const REPORT_FIELD_LABELS = {
@@ -22,6 +25,61 @@ const REPORT_FIELD_LABELS = {
   lossReason: "Причина отказа",
   archived: "В архиве",
   dealId: "ID сделки",
+  description: "Описание",
+  doneAt: "Выполнено",
+  reminderAt: "Напоминание",
+  createdBy: "Создал",
+  authorEmail: "Email автора",
+  name: "ФИО",
+  email: "Email",
+  phone: "Телефон",
+  role: "Роль",
+  isPrimary: "Основной",
+  label: "Метка",
+  originalName: "Имя файла",
+  size: "Размер",
+  uploadedBy: "Загрузил",
+  uploadedAt: "Дата загрузки",
+  companyName: "Название ЮЛ",
+  companyInn: "ИНН",
+  companyKpp: "КПП",
+  companyOgrn: "ОГРН",
+  website: "Сайт",
+  sourceChannel: "Канал",
+  utmSource: "utm_source",
+  utmMedium: "utm_medium",
+  utmCampaign: "utm_campaign",
+  landingPage: "Лендинг",
+  referrer: "Referrer",
+  partnerDiscount: "Скидка партнёру",
+  clientDiscount: "Скидка клиенту",
+  manualProb: "Вероятность",
+  budgetPlannedMonth: "Месяц согласования",
+  budgetPlannedYear: "Год согласования",
+  pains: "Боли",
+  capabilities: "Возможности",
+  dml: "DML",
+  nextStepType: "Тип след. шага",
+  nextStepComment: "Коммент. след. шага",
+  riskType: "Тип риска",
+  riskComment: "Комм. риска",
+  competitors: "Конкуренты",
+  amoId: "ID amoCRM",
+  lastUpdate: "Обновлено",
+  dealType: "Тип сделки",
+  hasPains: "Есть боли",
+  duplicate_of: "Дубликат",
+  score: "Балл",
+  category: "Категория",
+  weighted: "Взвеш. сумма",
+  quality: "Качество паспорта",
+  daysTo: "Дней до задачи",
+  daysSince: "Дней с обновления",
+  commitLabel: "Коммит (текст)",
+  riskFlag: "Флаг риска",
+  productPct: "% продукта",
+  pilotPct: "% пилота",
+};
   title: "Название",
   assignee: "Ответственный",
   dueAt: "Срок",
@@ -62,6 +120,10 @@ async function renderReportBuilder() {
     const { items: presets } = await apiListReportPresets();
     const presetList = presets || [];
     const fields = entities?.[reportState.entity] || [];
+    const colSearch = reportState.colSearch || "";
+    const filteredFields = colSearch
+      ? fields.filter(f => reportFieldLabel(f).toLowerCase().includes(colSearch.toLowerCase()) || f.toLowerCase().includes(colSearch.toLowerCase()))
+      : fields;
     box.innerHTML = `
     <h3>Конструктор отчётов</h3>
     <div class="form-grid">
@@ -80,9 +142,12 @@ async function renderReportBuilder() {
           <option value="pie" ${reportState.chartType === "pie" ? "selected" : ""}>Круг</option>
         </select></div>
     </div>
-    <div style="margin-top:1rem"><label>Колонки</label>
-      <div class="rep-cols">${fields.map(f =>
+    <div style="margin-top:1rem">
+      <label>Колонки <span class="muted">(${fields.length} атрибутов)</span></label>
+      <input type="search" id="rep-col-search" placeholder="Поиск атрибута…" value="${escapeHtml(colSearch)}" style="width:100%;max-width:320px;margin:.35rem 0 .5rem">
+      <div class="rep-cols">${filteredFields.map(f =>
         `<label class="deals-ms-opt"><input type="checkbox" class="rep-col-cb" value="${f}" checked> ${reportFieldLabel(f)}</label>`).join("")}
+      ${!filteredFields.length ? "<span class='muted'>Ничего не найдено</span>" : ""}
     </div>
     <div style="margin-top:1rem;display:flex;gap:.5rem">
       <button type="button" class="btn btn-primary btn-sm" id="rep-run">Построить</button>
@@ -93,8 +158,13 @@ async function renderReportBuilder() {
     </div>`;
     document.getElementById("rep-entity").onchange = e => {
       reportState.entity = e.target.value;
+      reportState.colSearch = "";
       renderReportBuilder();
     };
+    document.getElementById("rep-col-search")?.addEventListener("input", e => {
+      reportState.colSearch = e.target.value;
+      renderReportBuilder();
+    });
     document.getElementById("rep-group").onchange = e => { reportState.groupBy = e.target.value; };
     document.getElementById("rep-chart").onchange = e => { reportState.chartType = e.target.value; };
     document.getElementById("rep-run").onclick = runCurrentReport;
