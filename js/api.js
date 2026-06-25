@@ -3,10 +3,11 @@
   const gasUrl = window.ITMEN_GAS_CONFIG?.url || "";
   const hasGas = gasUrl && !gasUrl.includes("PASTE_YOUR");
   const onGhPages = /\.github\.io$/i.test(location.hostname);
+  const onItmenHost = /itmen-pipeline\.nwlvl\.ru$/i.test(location.hostname);
   const onLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 
   let backend = "local";
-  if (hasGas && (onGhPages || window.ITMEN_FORCE_GAS || !onLocal)) backend = "gas";
+  if (hasGas && (onGhPages || onItmenHost || window.ITMEN_FORCE_GAS || !onLocal)) backend = "gas";
   else if (onLocal) backend = "express";
 
   window.ITMEN_API = {
@@ -112,8 +113,12 @@ async function apiListManagers() {
 }
 
 function apiBackendLabel() {
-  if (window.ITMEN_API.backend === "gas") return "Google Таблица";
+  if (window.ITMEN_API.backend === "gas") {
+    if (/itmen-pipeline\.nwlvl\.ru$/i.test(location.hostname)) return "сервер (GAS staging)";
+    return "Google Таблица";
+  }
   if (window.ITMEN_API.backend === "express") return "сервер";
+  if (window.ITMEN_API.backend === "pocketbase") return "PocketBase";
   return "этот браузер";
 }
 
