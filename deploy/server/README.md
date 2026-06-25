@@ -52,7 +52,15 @@ sudo /opt/itmen-pipeline/scripts/setup.sh
 3. `certbot --nginx -d pipeline.YOUR_DOMAIN`
 4. `nginx -t && systemctl reload nginx`
 
-## SSH tunnel (пока нет домена)
+## Доступ (без SSH)
+
+**Admin UI:** https://itmen-pipeline.nwlvl.ru/_/
+
+**API health:** https://itmen-pipeline.nwlvl.ru/api/health
+
+Логин и пароль — в `/opt/itmen-pipeline/.env` на сервере (`PB_ADMIN_EMAIL`, `PB_ADMIN_PASSWORD`).
+
+## SSH tunnel (если nginx недоступен)
 
 ```bash
 ssh -L 8095:127.0.0.1:8095 newlevel-prod
