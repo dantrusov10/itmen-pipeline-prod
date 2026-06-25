@@ -428,6 +428,7 @@ function getMultiselectFilter(colKey) {
 function resolveStageFilterOptions(deals) {
   const base = state?.lists?.stages || window.ITMEN_INITIAL?.lists?.stages || [];
   const all = [...base];
+  if (!all.includes("Отказ")) all.push("Отказ");
   [...new Set((deals || []).map(d => d.stage).filter(Boolean))].forEach(s => {
     if (!all.includes(s)) all.push(s);
   });
@@ -630,7 +631,9 @@ function renderDealsTableRow(d) {
   const realIdx = state.deals.findIndex(x => x.id === d.id);
   const canDel = typeof canDeleteDeal === "function" ? canDeleteDeal(d) : true;
   const viewTitle = typeof canEditDeal === "function" && !canEditDeal(d) ? "Просмотр паспорта" : "Редактировать";
+  const admin = typeof isAdmin === "function" ? isAdmin() : false;
   return `<tr class="deals-row-clickable" data-id="${escapeHtml(d.id)}" title="Открыть паспорт сделки">
+    ${admin ? `<td class="col-bulk" onclick="event.stopPropagation()"><input type="checkbox" class="deal-bulk-cb" value="${escapeHtml(d.id)}"></td>` : ""}
     ${getVisibleDealsCols().map(c => c.render(d)).join("")}
     <td class="actions">
       <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); openDealModal(${realIdx})" title="${viewTitle}">✏️</button>
@@ -876,6 +879,12 @@ function bindDealsTableEvents() {
   const page = document.getElementById("page-deals");
   if (!page) return;
 
+  page.addEventListener("change", e => {
+    if (e.target.id === "deals-bulk-all") {
+      document.querySelectorAll(".deal-bulk-cb").forEach(cb => { cb.checked = e.target.checked; });
+    }
+  });
+
   page.addEventListener("click", e => {
     const msToggle = e.target.closest(".deals-ms-toggle:not(.dash-ms-toggle)");
     if (msToggle) {
@@ -1019,7 +1028,11 @@ function syncDealsTableHeadHeight() {
   if (h > 0) document.documentElement.style.setProperty("--deals-head-h", `${h}px`);
 }
 
-function syncDealsReportHashFromTable() {
+function getSelectedDealIds() {
+  return [...document.querySelectorAll(".deal-bulk-cb:checked")].map(cb => cb.value);
+}
+
+window.getSelectedDealIds = getSelectedDealIds;
   if (typeof updateDealsReportHash !== "function") return;
   updateDealsReportHash(buildDealsReportSpec(dealsTableColFilters, dealsTablePreset));
 }
@@ -1058,8 +1071,8 @@ function renderDealsTable(deals) {
     <div class="deals-table-shell">
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
-          <tr>${getVisibleDealsCols().map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
-          <tr class="deals-filter-row">${getVisibleDealsCols().map(c =>
+          <tr>${admin ? "<th class=\"col-bulk\"><input type=\"checkbox\" id=\"deals-bulk-all\" title=\"Выбрать все\"></th>" : ""}${getVisibleDealsCols().map(c => renderSortHeader(c)).join("")}<th class="col-actions"></th></tr>
+          <tr class="deals-filter-row">${admin ? "<th></th>" : ""}${getVisibleDealsCols().map(c =>
             `<th>${renderColFilter(c, deals)}</th>`
           ).join("")}<th></th></tr>
         </thead>

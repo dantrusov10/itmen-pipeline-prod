@@ -1281,3 +1281,41 @@ body.page-deals-active .deals-table-hint {
 @media (max-width: 900px) {
   .passport-block-chip { flex: 1 1 100%; }
 }
+
+/* CRM v4 */
+.deal-tabs { display: flex; gap: .25rem; padding: .5rem 1rem; border-bottom: 1px solid var(--border); background: #f8fafc; flex-wrap: wrap; }
+.deal-tab { border: 1px solid var(--border); background: #fff; padding: .35rem .65rem; border-radius: 6px; font-size: .82rem; cursor: pointer; }
+.deal-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.feed-list { max-height: 360px; overflow-y: auto; }
+.feed-item { padding: .65rem 0; border-bottom: 1px solid var(--border); }
+.feed-meta { font-size: .8rem; margin-bottom: .25rem; }
+.task-row, .file-row { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid #eee; }
+.task-row .done { text-decoration: line-through; color: var(--muted); }
+.task-form, .file-form, .feed-compose { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.contact-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-bottom: .5rem; }
+.kanban-board { display: flex; gap: .75rem; overflow-x: auto; padding-bottom: 1rem; }
+.kanban-col { min-width: 240px; max-width: 280px; background: #f1f5f9; border-radius: var(--radius); }
+.kanban-col-head { padding: .6rem .75rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); }
+.kanban-col-body { min-height: 120px; padding: .5rem; }
+.kanban-col-body.drag-over { background: #e0f2fe; }
+.kanban-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: .6rem; margin-bottom: .5rem; cursor: grab; box-shadow: var(--shadow); }
+.kanban-card-title { font-weight: 600; font-size: .88rem; }
+.kanban-card-meta { display: flex; justify-content: space-between; font-size: .75rem; margin: .35rem 0; }
+.cal-weekdays, .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-weekdays span { font-size: .75rem; color: var(--muted); text-align: center; }
+.cal-day { min-height: 72px; border: 1px solid var(--border); border-radius: 6px; padding: 4px; font-size: .75rem; }
+.cal-day.has-tasks { background: #eff6ff; }
+.cal-task { background: #fff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 4px; margin-top: 2px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notif-badge { background: #dc2626; color: #fff; border-radius: 999px; padding: 0 5px; font-size: .7rem; margin-left: 2px; }
+.notif-panel, .search-results { position: fixed; top: 56px; right: 1rem; width: 320px; max-height: 400px; overflow: auto; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 200; }
+.notif-panel-head { display: flex; justify-content: space-between; align-items: center; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+.notif-item { display: block; padding: .6rem .75rem; border-bottom: 1px solid #eee; text-decoration: none; color: inherit; }
+.profile-grid { display: grid; gap: 1rem; }
+.profile-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; margin-top: .5rem; }
+.profile-notify label { display: block; margin: .25rem 0; font-size: .88rem; }
+.reports-layout { display: grid; gap: 1rem; }
+.rep-bar-row { display: grid; grid-template-columns: 120px 1fr 40px; gap: .5rem; align-items: center; margin: .25rem 0; font-size: .85rem; }
+.rep-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.rep-bar div { height: 100%; background: var(--navy-light); }
+.dash-mine-toggle { display: flex; align-items: center; gap: .35rem; margin-right: .75rem; }
+.col-bulk { width: 32px; text-align: center; }

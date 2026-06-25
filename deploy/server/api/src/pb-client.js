@@ -42,13 +42,16 @@ async function ensureAuth() {
   return authPromise;
 }
 
-async function pbFetch(path, { method = "GET", body = null, auth = true } = {}) {
-  const headers = { "Content-Type": "application/json" };
+async function pbFetch(path, { method = "GET", body = null, auth = true, headers: extra = {} } = {}) {
+  const headers = { ...extra };
+  if (!headers["Content-Type"] && body != null && typeof body === "string") {
+    headers["Content-Type"] = "application/json";
+  }
   if (auth) headers.Authorization = await ensureAuth();
   const res = await fetch(`${PB_URL}${path}`, {
     method,
     headers,
-    body: body == null ? undefined : JSON.stringify(body),
+    body: body == null ? undefined : body,
   });
   const text = await res.text();
   let data = {};
@@ -91,11 +94,11 @@ async function findOne(collection, filter) {
 }
 
 async function createRecord(collection, body) {
-  return pbFetch(`/api/collections/${collection}/records`, { method: "POST", body });
+  return pbFetch(`/api/collections/${collection}/records`, { method: "POST", body: JSON.stringify(body) });
 }
 
 async function updateRecord(collection, id, body) {
-  return pbFetch(`/api/collections/${collection}/records/${id}`, { method: "PATCH", body });
+  return pbFetch(`/api/collections/${collection}/records/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
 async function deleteRecord(collection, id) {
@@ -110,6 +113,41 @@ async function deleteByFilter(collection, filter) {
   return rows.length;
 }
 
+function getFileUrl(record, fileName) {
+  if (!record?.id || !fileName) return "";
+  const colId = record.collectionId || record.collection_id || "";
+  return `${PB_URL}/api/files/${colId}/${record.id}/${fileName}`;
+}
+
+async function uploadRecord(collection, fields, { file, fileName, fileField = "file" } = {}, recordId = null) {
+  const token = await ensureAuth();
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v == null || v === "") continue;
+    form.append(k, String(v));
+  }
+  if (file) {
+    form.append(fileField, new Blob([file]), fileName || "file");
+  }
+  const path = recordId
+    ? `/api/collections/${collection}/records/${recordId}`
+    : `/api/collections/${collection}/records`;
+  const res = await fetch(`${PB_URL}${path}`, {
+    method: recordId ? "PATCH" : "POST",
+    headers: { Authorization: token },
+    body: form,
+  });
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+  if (!res.ok) {
+    const err = new Error(data.message || res.statusText || "Upload failed");
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 module.exports = {
   ensureAuth,
   listAll,
@@ -118,4 +156,7 @@ module.exports = {
   updateRecord,
   deleteRecord,
   deleteByFilter,
+  uploadRecord,
+  getFileUrl,
+  PB_URL,
 };

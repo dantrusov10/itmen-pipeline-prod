@@ -85,6 +85,10 @@ function mapDealRow(d) {
     has_pains: Boolean(d.hasPains) || Boolean(String(pains).trim()),
     competitors: d.competitors || "",
     deal_updated_at: isoDate(d.updatedAt || d.lastUpdate),
+    archived: Boolean(d.archived),
+    archived_at: d.archivedAt || null,
+    loss_reason: d.lossReason || "",
+    duplicate_of: d.duplicateOf || "",
   };
 }
 
@@ -188,6 +192,10 @@ function assembleDealChildren(deal, children) {
     hasPains: Boolean(deal.has_pains),
     competitors: deal.competitors || "",
     updatedAt: deal.deal_updated_at || isoDate(deal.last_update),
+    archived: Boolean(deal.archived),
+    archivedAt: deal.archived_at || null,
+    lossReason: deal.loss_reason || "",
+    duplicateOf: deal.duplicate_of || "",
     scores,
     scoreReasons,
     scoresOverridden,
@@ -262,7 +270,7 @@ async function loadChildrenByDeal() {
   return byDeal;
 }
 
-async function loadPipelineState({ lite = false, dealId = null } = {}) {
+async function loadPipelineState({ lite = false, dealId = null, includeArchived = false } = {}) {
   const [metaRow, listRows, scoringRows, dealRows] = await Promise.all([
     findOne("pipeline_meta", 'slug="main"'),
     listAll("list_items", { sort: "sort_order" }),
@@ -274,11 +282,15 @@ async function loadPipelineState({ lite = false, dealId = null } = {}) {
 
   if (dealId && !dealRows.length) return null;
 
+  const activeRows = includeArchived
+    ? dealRows
+    : dealRows.filter(row => !row.archived);
+
   const childrenByDeal = lite && !dealId
     ? await loadLiteChildren()
     : await loadChildrenByDeal();
 
-  const deals = dealRows.map(row => {
+  const deals = activeRows.map(row => {
     const children = childrenByDeal[row.id] || {};
     return assembleDealChildren(row, children);
   });
@@ -501,20 +513,68 @@ async function updatePipelineMeta(state, dataEpoch) {
 
 async function touchMetaAfterDealSave(savedBy) {
   const meta = await findOne("pipeline_meta", 'slug="main"');
-  if (!meta) return;
+  if (!meta) return null;
+  const nextEpoch = (meta.data_epoch || 1) + 1;
   await updateRecord("pipeline_meta", meta.id, {
     saved_at: new Date().toISOString(),
     saved_by: savedBy || "web",
-    data_epoch: (meta.data_epoch || 1) + 1,
+    data_epoch: nextEpoch,
   });
+  return meta;
+}
+
+async function computeNextDealId() {
+  const meta = await findOne("pipeline_meta", 'slug="main"');
+  let nextId = Number(meta?.next_id) || 1;
+  const rows = await listAll("deals", { fields: "deal_id" });
+  for (const row of rows) {
+    const m = /^D-(\d+)$/i.exec(String(row.deal_id || ""));
+    if (m) nextId = Math.max(nextId, parseInt(m[1], 10) + 1);
+  }
+  return { nextId, meta };
+}
+
+async function allocateDealId() {
+  const { nextId, meta } = await computeNextDealId();
+  const dealId = `D-${String(nextId).padStart(3, "0")}`;
+  if (meta) {
+    await updateRecord("pipeline_meta", meta.id, { next_id: nextId + 1 });
+  }
+  return dealId;
+}
+
+async function dealIdExists(dealId) {
+  if (!dealId) return false;
+  const existing = await findOne("deals", `deal_id="${String(dealId).replace(/"/g, '\\"')}"`);
+  return Boolean(existing);
 }
 
 async function saveSingleDeal(deal, { savedBy = "web", isNew = false } = {}) {
-  const oldDeal = isNew ? null : await loadPipelineState({ dealId: deal.id });
+  let oldDeal = null;
+  let created = isNew;
+
+  if (isNew) {
+    oldDeal = null;
+    if (!deal.id || await dealIdExists(deal.id)) {
+      deal = { ...deal, id: await allocateDealId() };
+    } else {
+      const { nextId, meta } = await computeNextDealId();
+      const m = /^D-(\d+)$/i.exec(String(deal.id));
+      const used = m ? parseInt(m[1], 10) + 1 : nextId;
+      if (meta && used > (meta.next_id || 1)) {
+        await updateRecord("pipeline_meta", meta.id, { next_id: used });
+      }
+    }
+  } else {
+    oldDeal = await loadPipelineState({ dealId: deal.id });
+    created = !oldDeal;
+  }
+
   await upsertDeal(deal);
   await touchMetaAfterDealSave(savedBy);
   const saved = await loadPipelineState({ dealId: deal.id });
-  return { saved, oldDeal, isNew: isNew || !oldDeal };
+  const { nextId } = await computeNextDealId();
+  return { saved, oldDeal, isNew: created, nextId };
 }
 
 async function savePipelineState(mergedState, { deletedDealIds = [] } = {}) {
@@ -540,4 +600,5 @@ module.exports = {
   deleteDealByDealId,
   listsFromRows,
   scoringFromRows,
+  allocateDealId,
 };

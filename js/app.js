@@ -3,7 +3,11 @@ const STORAGE_KEY = "itmen_pipeline_v2";
 const PAGES = {
   panel: { title: "Дашборд пайплайна", icon: "📊" },
   deals: { title: "Паспорт сделок", icon: "📋" },
+  kanban: { title: "Канбан", icon: "📌" },
+  calendar: { title: "Календарь", icon: "📅" },
+  reports: { title: "Отчёты", icon: "📈" },
   scoring: { title: "Модель скоринга", icon: "⚖️" },
+  profile: { title: "Профиль", icon: "👤" },
 };
 
 let state = null;
@@ -16,6 +20,7 @@ let metricsCache = null;
 let activePage = "panel";
 let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
 const INACTIVE_OWNERS = ["Павел Витков"];
+let dashboardMineOnly = localStorage.getItem("itmen_dash_mine") === "1";
 let dashboardEventsBound = false;
 
 function invalidateMetricsCache() {
@@ -29,6 +34,9 @@ function getEnrichedDeals() {
 
 function getDashboardDeals() {
   let deals = state?.deals || [];
+  if (dashboardMineOnly && window.ITMEN_AUTH?.user?.managerName) {
+    deals = deals.filter(d => d.owner === window.ITMEN_AUTH.user.managerName);
+  }
   if (dashboardFilters.owner?.length) {
     const selected = new Set(dashboardFilters.owner);
     deals = deals.filter(d => selected.has(d.owner));
@@ -77,7 +85,25 @@ function dashStageOptions() {
     const s = d.stage;
     if (s && !all.includes(s)) all.push(s);
   });
+  if (!all.includes("Отказ")) all.push("Отказ");
   return all;
+}
+
+function pipelineStageOptions() {
+  return dashStageOptions();
+}
+
+function lossReasonOptions() {
+  return state?.lists?.loss_reasons || window.ITMEN_INITIAL?.lists?.loss_reasons || [
+    "Нет бюджета", "Выбрали конкурента", "Проект заморожен", "Нет ЛПР / контакта",
+    "Не подошло решение", "Сроки не совпали", "Другое",
+  ];
+}
+
+function toggleLossReasonField() {
+  const wrap = document.getElementById("loss-reason-wrap");
+  if (!wrap) return;
+  wrap.style.display = val("f-stage") === "Отказ" ? "" : "none";
 }
 
 function dashBudgetPeriodOptions() {
@@ -182,6 +208,13 @@ function bindDashboardEvents() {
   if (!el) return;
 
   el.addEventListener("change", e => {
+    if (e.target.id === "dash-mine-only") {
+      dashboardMineOnly = e.target.checked;
+      localStorage.setItem("itmen_dash_mine", dashboardMineOnly ? "1" : "0");
+      invalidateMetricsCache();
+      renderPanel(getDashboardMetrics());
+      return;
+    }
     if (e.target.classList.contains("passport-block-cb")) {
       const checked = [...el.querySelectorAll(".passport-block-cb:checked")].map(cb => cb.value);
       passportBlockSelection = checked.length ? checked : ["basic"];
@@ -594,6 +627,10 @@ function renderActivePage() {
       if (typeof syncDealsReportFiltersToUI === "function") syncDealsReportFiltersToUI();
       if (typeof renderDealsFilterBanner === "function") renderDealsFilterBanner();
     }
+    else if (activePage === "kanban" && typeof renderKanban === "function") renderKanban();
+    else if (activePage === "calendar" && typeof renderCalendar === "function") renderCalendar();
+    else if (activePage === "reports" && typeof renderReports === "function") renderReports();
+    else if (activePage === "profile" && typeof renderProfile === "function") renderProfile();
     else if (activePage === "scoring") renderScoring();
     else {
       activePage = "panel";
@@ -682,6 +719,7 @@ function renderPanel(m) {
 
   el.innerHTML = `
     <div class="dashboard-filters">
+      <label class="dash-mine-toggle muted"><input type="checkbox" id="dash-mine-only" ${dashboardMineOnly ? "checked" : ""}> Только мои сделки</label>
       ${renderDashFilterField("Ответственный", renderDashMultiselect("owner", ownerOptions, dashboardFilters.owner))}
       ${renderDashFilterField("Категория", renderDashMultiselect("category", categoryOptions, dashboardFilters.category))}
       ${renderDashFilterField("Стадия", renderDashMultiselect("stage", stageOptions, dashboardFilters.stage))}
@@ -1185,7 +1223,8 @@ async function openDealModalAsync(idx) {
         <div><label>Клиент</label><input id="f-customer" value="${escapeHtml(d.customer)}" placeholder="Название компании"></div>
         <div><label>Отрасль</label>${select("f-industry", L.industries, d.industry)}</div>
         <div><label>Владелец</label>${select("f-owner", L.owners, d.owner || L.owners[0])}</div>
-        <div><label>Стадия (amoCRM)</label>${select("f-stage", L.stages, d.stage)}</div>
+        <div><label>Стадия (amoCRM)</label>${select("f-stage", pipelineStageOptions(), d.stage, "toggleLossReasonField()")}</div>
+        <div id="loss-reason-wrap" style="display:${d.stage === "Отказ" ? "" : "none"}"><label>Причина отказа</label>${select("f-lossReason", ["", ...lossReasonOptions()], d.lossReason || "")}</div>
         <div><label>Ожидаемая сумма, ₽ ${hint(window.ITMEN_CONFIG?.fieldHints?.expectedAmount || "")}</label><input type="number" id="f-amount" value="${d.amount || 0}"></div>
         <div><label>Ожидаемый бюджет, ₽ ${hint(window.ITMEN_CONFIG?.fieldHints?.expectedBudget || "")}</label><input type="number" id="f-expectedBudget" value="${d.expectedBudget || d.budgetAmount || 0}"></div>
         <div><label>Партнёр</label>${select("f-partner", L.partners || ["Нет партнёра"], d.partner || "Нет партнёра")}</div>
@@ -1233,13 +1272,13 @@ async function openDealModalAsync(idx) {
     </div>`;
 
     toggleBudgetPlannedDate();
+    toggleLossReasonField();
     applyDealModalReadOnly(editable);
-    if (editable && isNew && window.ITMEN_AUTH?.user?.managerName && !isAdmin()) {
+    dealModalTab = "passport";
+    if (typeof renderDealModalTabs === "function") renderDealModalTabs();
+    if (editable && isNew && window.ITMEN_AUTH?.user?.managerName) {
       const ownerEl = document.getElementById("f-owner");
-      if (ownerEl) {
-        ownerEl.value = window.ITMEN_AUTH.user.managerName;
-        ownerEl.disabled = true;
-      }
+      if (ownerEl && !ownerEl.value) ownerEl.value = window.ITMEN_AUTH.user.managerName;
     }
   } finally {
     if (token === dealModalOpenToken) dealModalOpening = false;
@@ -1271,7 +1310,8 @@ function markScoreOverride(key) {
 }
 
 function emptyDeal() {
-  const defaultOwner = state.lists?.owners?.[0] || "Аркадий Мерлейн";
+  const defaultOwner = window.ITMEN_AUTH?.user?.managerName
+    || state.lists?.owners?.[0] || "Аркадий Мерлейн";
   return {
     id: previewDealId(),
     customer: "",
@@ -1344,6 +1384,10 @@ function saveDealModal() {
 }
 
 async function saveDealModalAsync() {
+  if (typeof dealModalTab === "function" && dealModalTab() !== "passport") {
+    alert("Сохранение паспорта — откройте вкладку «Паспорт»");
+    return;
+  }
   const prev = editingDealIdx != null ? state.deals[editingDealIdx] : null;
   const scoreData = collectScoresFromForm(prev);
   const riskTypes = collectRiskTypesFromForm();
@@ -1379,6 +1423,7 @@ async function saveDealModalAsync() {
     capabilities: prev?.capabilities || "",
     dml: prev?.dml || "Не определён",
     amoId: prev?.amoId || null,
+    lossReason: val("f-lossReason") || "",
   };
 
   if (deal.budgetStatus === "Планируется согласование" && (!deal.budgetPlannedMonth || !deal.budgetPlannedYear)) {
@@ -1399,6 +1444,16 @@ async function saveDealModalAsync() {
     return;
   }
 
+  if (deal.stage === "Отказ" && !deal.lossReason) {
+    alert("Укажите причину отказа");
+    return;
+  }
+  if (editingDealIdx == null && window.ITMEN_API?.backend === "pocketbase" && typeof apiCheckDuplicates === "function") {
+    try {
+      const { items } = await apiCheckDuplicates(deal.customer, deal.id);
+      if (items?.length && !confirm(`Найдены похожие сделки (${items.length}): ${items.map(x => x.id).join(", ")}. Всё равно создать?`)) return;
+    } catch (_) {}
+  }
   if (editingDealIdx != null && !canEditDeal(state.deals[editingDealIdx])) {
     alert("Можно редактировать только свои сделки");
     return;
@@ -1406,8 +1461,13 @@ async function saveDealModalAsync() {
 
   if (editingDealIdx != null) state.deals[editingDealIdx] = deal;
   else {
-    deal.id = consumeDealId();
-    if (window.ITMEN_AUTH?.user?.managerName && !isAdmin()) {
+    const placeholderId = previewDealId();
+    if (window.ITMEN_API?.backend === "pocketbase") {
+      deal.id = placeholderId;
+    } else {
+      deal.id = consumeDealId();
+    }
+    if (!deal.owner?.trim() && window.ITMEN_AUTH?.user?.managerName) {
       deal.owner = window.ITMEN_AUTH.user.managerName;
     }
     state.deals.push(deal);
@@ -1417,10 +1477,19 @@ async function saveDealModalAsync() {
 
   if (window.ITMEN_API?.backend === "pocketbase") {
     try {
+      const placeholderId = editingDealIdx == null ? deal.id : null;
       const res = await apiSaveDeal(deal);
       if (res.deal) {
-        const i = state.deals.findIndex(x => x.id === deal.id);
-        if (i >= 0) state.deals[i] = migrateDeal(res.deal);
+        const migrated = migrateDeal(res.deal);
+        if (placeholderId && placeholderId !== migrated.id) {
+          const oldIdx = state.deals.findIndex(x => x.id === placeholderId);
+          if (oldIdx >= 0) state.deals[oldIdx] = migrated;
+          else state.deals.push(migrated);
+        } else {
+          const i = state.deals.findIndex(x => x.id === migrated.id);
+          if (i >= 0) state.deals[i] = migrated;
+        }
+        if (res.nextId != null) state.nextId = res.nextId;
         persistStateCache(state);
       }
       const n = res?.auditRows ?? 0;
@@ -1446,7 +1515,7 @@ async function deleteDealAsync(idx) {
     alert("Можно удалять только свои сделки");
     return;
   }
-  if (!confirm("Удалить сделку " + deal.id + "?")) return;
+  if (!confirm("Переместить сделку " + deal.id + " в архив?")) return;
   const deletedId = deal.id;
   if (window.ITMEN_API?.backend === "pocketbase") {
     await apiDeleteDeal(deletedId);
@@ -1506,6 +1575,20 @@ async function importJson(input) {
   input.value = "";
 }
 
+async function reloadPipelineFromServer() {
+  if (!window.ITMEN_API?.enabled) return;
+  const loaded = await apiLoadPipeline({ lite: false });
+  if (loaded) {
+    state = migrateState(loaded);
+    persistStateCache(state);
+    invalidateMetricsCache();
+    renderAll();
+  }
+}
+
+window.reloadPipelineFromServer = reloadPipelineFromServer;
+window.toggleLossReasonField = toggleLossReasonField;
+
 document.addEventListener("DOMContentLoaded", async () => {
   renderAppSkeleton();
 
@@ -1534,6 +1617,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const ok = await ensureAuthSession();
     if (!ok) return;
     renderAuthTopbar();
+    if (typeof refreshNotifications === "function") refreshNotifications();
   }
 
   if (window.ITMEN_API?.enabled) {

@@ -235,6 +235,9 @@ function suggestScores(deal) {
   } else if (stage === "На паузе") {
     scores.timing = 1;
     reasons.timing = "Сделка на паузе";
+  } else if (stage === "Отказ") {
+    scores.timing = 0;
+    reasons.timing = "Сделка в отказе";
   } else if (EARLY_STAGES.includes(stage)) {
     scores.timing = 2;
     reasons.timing = "Ранняя стадия — сроки пока не определены";
