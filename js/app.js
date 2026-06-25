@@ -18,8 +18,7 @@ let dealModalOpenToken = 0;
 let dealModalOpening = false;
 let metricsCache = null;
 let activePage = "panel";
-let dashboardAmoFilters = {};
-let dashboardFilterOpen = false;
+let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
 const INACTIVE_OWNERS = ["Павел Витков"];
 let dashboardMineOnly = localStorage.getItem("itmen_dash_mine") === "1";
 let dashboardEventsBound = false;
@@ -38,8 +37,33 @@ function getDashboardDeals() {
   if (dashboardMineOnly && window.ITMEN_AUTH?.user?.managerName) {
     deals = deals.filter(d => d.owner === window.ITMEN_AUTH.user.managerName);
   }
-  if (typeof dealMatchesAmoFilters === "function") {
-    deals = deals.filter(d => dealMatchesAmoFilters(d, dashboardAmoFilters));
+  if (dashboardFilters.owner?.length) {
+    const selected = new Set(dashboardFilters.owner);
+    deals = deals.filter(d => selected.has(d.owner));
+  }
+  if (dashboardFilters.category?.length) {
+    const selected = new Set(dashboardFilters.category);
+    deals = deals.filter(d => selected.has(enrichDeal(d).category));
+  }
+  if (dashboardFilters.budgetPeriod?.length) {
+    const selected = new Set(dashboardFilters.budgetPeriod);
+    deals = deals.filter(d => selected.has(d.budgetPeriod || "Не определён"));
+  }
+  if (dashboardFilters.stage?.length) {
+    const selected = new Set(dashboardFilters.stage);
+    deals = deals.filter(d => selected.has(d.stage || "—"));
+  }
+  if (dashboardFilters.partner?.length) {
+    const selected = new Set(dashboardFilters.partner);
+    deals = deals.filter(d => selected.has((d.partner || "").trim() || "Без партнёра"));
+  }
+  if (dashboardFilters.commitStatus?.length) {
+    const selected = new Set(dashboardFilters.commitStatus);
+    deals = deals.filter(d => selected.has(commitLabel(d.commitStatus)));
+  }
+  if (dashboardFilters.budgetStatus?.length) {
+    const selected = new Set(dashboardFilters.budgetStatus);
+    deals = deals.filter(d => selected.has(d.budgetStatus || "Неизвестно"));
   }
   return deals;
 }
@@ -159,7 +183,7 @@ function syncDashMultiselect(key) {
   const wrap = document.querySelector(`.dash-ms-filter[data-dash-key="${key}"]`);
   if (!wrap) return;
   const checked = [...wrap.querySelectorAll(".dash-ms-cb:checked")].map(cb => cb.value);
-  dashboardAmoFilters[key] = checked.length ? checked : [];
+  dashboardFilters[key] = checked.length ? checked : [];
   updateDashMultiselectLabel(key);
 }
 
@@ -171,9 +195,10 @@ function closeDashMultiselectPanels(except) {
 }
 
 function dashFiltersActive() {
-  return typeof amoFilterActiveCount === "function"
-    ? amoFilterActiveCount(dashboardAmoFilters, getKanbanFilterCols()) > 0
-    : false;
+  return dashboardFilters.owner?.length || dashboardFilters.category?.length
+    || dashboardFilters.budgetPeriod?.length || dashboardFilters.stage?.length
+    || dashboardFilters.partner?.length || dashboardFilters.commitStatus?.length
+    || dashboardFilters.budgetStatus?.length;
 }
 
 function bindDashboardEvents() {
@@ -206,8 +231,7 @@ function bindDashboardEvents() {
 
   el.addEventListener("click", e => {
     if (e.target.id === "dash-clear-filters") {
-      dashboardAmoFilters = {};
-      dashboardFilterOpen = false;
+      dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
       renderPanel(getDashboardMetrics());
       return;
     }
@@ -639,7 +663,14 @@ function metricCard(label, value, sub) {
 }
 
 function withDashboardFilters(spec) {
-  const filters = { ...(spec.filters || {}), ...dashboardAmoFilters };
+  const filters = { ...(spec.filters || {}) };
+  if (dashboardFilters.owner?.length) filters.owner = [...dashboardFilters.owner];
+  if (dashboardFilters.category?.length) filters.category = [...dashboardFilters.category];
+  if (dashboardFilters.budgetPeriod?.length) filters.budgetPeriod = [...dashboardFilters.budgetPeriod];
+  if (dashboardFilters.stage?.length) filters.stage = [...dashboardFilters.stage];
+  if (dashboardFilters.partner?.length) filters.partner = [...dashboardFilters.partner];
+  if (dashboardFilters.commitStatus?.length) filters.commitStatus = [...dashboardFilters.commitStatus];
+  if (dashboardFilters.budgetStatus?.length) filters.budgetStatus = [...dashboardFilters.budgetStatus];
   return buildDealsReportSpec(filters, spec.preset);
 }
 
@@ -669,9 +700,13 @@ function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
   const n = m.pipelineCount ?? m.deals?.length ?? 0;
-  const filterN = typeof amoFilterActiveCount === "function"
-    ? amoFilterActiveCount(dashboardAmoFilters, getKanbanFilterCols())
-    : 0;
+  const ownerOptions = getDashboardOwners();
+  const categoryOptions = dashCategoryOptions();
+  const periodOptions = dashBudgetPeriodOptions();
+  const stageOptions = dashStageOptions();
+  const partnerOptions = dashPartnerOptions();
+  const commitOptions = dashCommitOptions();
+  const budgetStatusOptions = dashBudgetStatusOptions();
   const compDealCount = m.dealsWithCompetitors ?? 0;
   const compDealLabel = formatRuDealsCount(compDealCount, "с конкурентами");
   const maxCommit = Math.max(1, ...Object.values(m.commitCounts || {}));
@@ -683,13 +718,16 @@ function renderPanel(m) {
   const budgetRows = Object.entries(m.byBudget || {}).sort((a, b) => b[1].pipeline - a[1].pipeline);
 
   el.innerHTML = `
-    <div class="dashboard-filters amo-dash-filters">
+    <div class="dashboard-filters">
       <label class="dash-mine-toggle muted"><input type="checkbox" id="dash-mine-only" ${dashboardMineOnly ? "checked" : ""}> Только мои сделки</label>
-      <div class="amo-filter-anchor">
-        <button type="button" class="btn btn-sm${dashboardFilterOpen ? " btn-primary" : ""}" id="dash-filters-btn">🔍 Фильтры${filterN ? ` (${filterN})` : ""}</button>
-        <div class="amo-filter-pop" id="dash-filter-pop" ${dashboardFilterOpen ? "" : "hidden"}></div>
-      </div>
-      ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить</button>` : ""}
+      ${renderDashFilterField("Ответственный", renderDashMultiselect("owner", ownerOptions, dashboardFilters.owner))}
+      ${renderDashFilterField("Категория", renderDashMultiselect("category", categoryOptions, dashboardFilters.category))}
+      ${renderDashFilterField("Стадия", renderDashMultiselect("stage", stageOptions, dashboardFilters.stage))}
+      ${renderDashFilterField("Срок", renderDashMultiselect("budgetPeriod", periodOptions, dashboardFilters.budgetPeriod))}
+      ${renderDashFilterField("Партнёр", renderDashMultiselect("partner", partnerOptions, dashboardFilters.partner))}
+      ${renderDashFilterField("Коммит", renderDashMultiselect("commitStatus", commitOptions, dashboardFilters.commitStatus))}
+      ${renderDashFilterField("Бюджет", renderDashMultiselect("budgetStatus", budgetStatusOptions, dashboardFilters.budgetStatus))}
+      ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
       ${metricCardDrill("Сделок в пайплайне", n, "в текущем срезе", dashDrill(buildDealsReportSpec({}, null)))}
@@ -928,31 +966,6 @@ function renderPanel(m) {
 
   if (typeof bindDynamicsEvents === "function") bindDynamicsEvents();
   if (typeof scheduleDynamicsLoad === "function") scheduleDynamicsLoad();
-
-  document.getElementById("dash-filters-btn")?.addEventListener("click", e => {
-    e.stopPropagation();
-    dashboardFilterOpen = !dashboardFilterOpen;
-    const pop = document.getElementById("dash-filter-pop");
-    if (!pop) return;
-    if (dashboardFilterOpen) {
-      pop.hidden = false;
-      mountAmoFilterPanel(pop, {
-        filters: dashboardAmoFilters,
-        deals: state?.deals || [],
-        onApply: f => {
-          dashboardAmoFilters = { ...f };
-          dashboardFilterOpen = false;
-          pop.hidden = true;
-          invalidateMetricsCache();
-          renderPanel(getDashboardMetrics());
-        },
-        onReset: () => { dashboardAmoFilters = {}; },
-      });
-    } else {
-      pop.hidden = true;
-      renderPanel(getDashboardMetrics());
-    }
-  });
 }
 
 function renderScoring() {
@@ -1645,11 +1658,31 @@ async function reloadPipelineFromServer() {
 window.reloadPipelineFromServer = reloadPipelineFromServer;
 window.toggleLossReasonField = toggleLossReasonField;
 
+function applySidebarCollapsed(collapsed) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  document.getElementById("sidebar")?.classList.toggle("collapsed", collapsed);
+  const btn = document.getElementById("sidebar-collapse");
+  if (btn) btn.title = collapsed ? "Развернуть меню" : "Свернуть меню";
+  localStorage.setItem("itmen_sidebar_collapsed", collapsed ? "1" : "0");
+}
+
+function initSidebarCollapse() {
+  const collapsed = localStorage.getItem("itmen_sidebar_collapsed") === "1";
+  applySidebarCollapsed(collapsed);
+  document.getElementById("sidebar-collapse")?.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = !document.getElementById("sidebar")?.classList.contains("collapsed");
+    applySidebarCollapsed(next);
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   renderAppSkeleton();
+  initSidebarCollapse();
 
   document.getElementById("nav").innerHTML = Object.entries(PAGES).map(([k, v]) =>
-    `<a href="#${k}" data-page="${k}"><span class="icon">${v.icon}</span>${v.title}</a>`
+    `<a href="#${k}" data-page="${k}" title="${escapeHtml(v.title)}"><span class="icon">${v.icon}</span><span class="nav-label">${escapeHtml(v.title)}</span></a>`
   ).join("");
 
   document.querySelectorAll(".nav a").forEach(a => {

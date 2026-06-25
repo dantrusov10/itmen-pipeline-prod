@@ -310,6 +310,7 @@ function invalidateDealCrmCache(dealId) {
 }
 
 document.addEventListener("DOMContentLoaded", () => initDealModalTabs());
+if (document.readyState !== "loading") initDealModalTabs();
 
 window.renderDealModalTabs = renderDealModalTabs;
 window.initDealModalTabs = initDealModalTabs;

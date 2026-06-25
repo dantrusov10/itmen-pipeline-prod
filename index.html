@@ -4,13 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ITMen — Пайплайн</title>
-  <link rel="stylesheet" href="css/style.css?v=crm4">
+  <link rel="stylesheet" href="css/style.css?v=crm5">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <h1>ИТМен</h1>
+        <div class="sidebar-brand-row">
+          <h1>ИТМен</h1>
+          <button type="button" class="sidebar-collapse-btn" id="sidebar-collapse" title="Свернуть меню" aria-label="Свернуть меню">◀</button>
+        </div>
         <p>Пайплайн · Сделки · Скоринг</p>
       </div>
       <nav class="nav" id="nav"></nav>
@@ -48,11 +51,11 @@
       </div>
       <div class="deal-tabs-wrap" id="deal-tabs-wrap">
         <nav class="deal-tabs" id="deal-tabs" role="tablist">
-          <button type="button" class="deal-tab active" data-tab="passport" role="tab">Паспорт</button>
-          <button type="button" class="deal-tab" data-tab="events" role="tab">События</button>
-          <button type="button" class="deal-tab" data-tab="files" role="tab">Файлы</button>
-          <button type="button" class="deal-tab" data-tab="info" role="tab">Общая информация</button>
-          <button type="button" class="deal-tab" data-tab="contacts" role="tab">Контакты</button>
+          <button type="button" class="deal-tab active" data-tab="passport" role="tab" onclick="switchDealTab('passport')">Паспорт</button>
+          <button type="button" class="deal-tab" data-tab="events" role="tab" onclick="switchDealTab('events')">События</button>
+          <button type="button" class="deal-tab" data-tab="files" role="tab" onclick="switchDealTab('files')">Файлы</button>
+          <button type="button" class="deal-tab" data-tab="info" role="tab" onclick="switchDealTab('info')">Общая информация</button>
+          <button type="button" class="deal-tab" data-tab="contacts" role="tab" onclick="switchDealTab('contacts')">Контакты</button>
         </nav>
       </div>
       <div class="modal-body"></div>
@@ -70,20 +73,20 @@
   <script src="js/auth.js?v=pb2"></script>
   <script src="js/api.js?v=pb4"></script>
   <script src="js/crm-api.js?v=crm2"></script>
-  <script src="js/deals-table.js?v=crm4"></script>
+  <script src="js/deals-table.js?v=crm5"></script>
   <script src="js/report-filters.js?v=feat2"></script>
-  <script src="js/amo-filters.js?v=crm4"></script>
+  <script src="js/amo-filters.js?v=crm5"></script>
   <script src="js/dynamics.js?v=pb1"></script>
   <script src="js/pipeline-cache.js?v=perf3"></script>
-  <script src="js/deal-crm-ui.js?v=crm4"></script>
-  <script src="js/kanban.js?v=crm4"></script>
+  <script src="js/deal-crm-ui.js?v=crm5"></script>
+  <script src="js/kanban.js?v=crm5"></script>
   <script src="js/calendar.js?v=crm2"></script>
   <script src="js/profile.js?v=crm2"></script>
-  <script src="js/reports.js?v=crm4"></script>
+  <script src="js/reports.js?v=crm5"></script>
   <script src="js/notifications-ui.js?v=crm1"></script>
   <script src="js/import-excel.js" defer></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="js/export-deals-excel.js?v=feat1" defer></script>
-  <script src="js/app.js?v=crm4"></script>
+  <script src="js/app.js?v=crm5"></script>
 </body>
 </html>

@@ -1115,7 +1115,6 @@ function renderDealsTable(deals) {
           updateDealsTableBody(getEnrichedDeals());
           syncDealsReportHashFromTable();
           renderDealsFilterBanner();
-          renderDealsTable(getEnrichedDeals());
         },
         onReset: () => { dealsTableColFilters = {}; },
       });

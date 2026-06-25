@@ -127,9 +127,15 @@ function mountAmoFilterPanel(hostEl, opts) {
   let draft = structuredClone(opts.filters || {});
   let expandedKey = opts.expandedKey || null;
 
-  const paint = () => {
+  const paint = (opts = {}) => {
+    const scrollEl = hostEl.querySelector(".amo-filter-scroll");
+    const scrollTop = opts.preserveScroll && scrollEl ? scrollEl.scrollTop : 0;
     hostEl.innerHTML = renderAmoFilterPanelHTML({ filters: opts.filters, draft, cols, deals, expandedKey });
     bind();
+    if (opts.preserveScroll) {
+      const newScrollEl = hostEl.querySelector(".amo-filter-scroll");
+      if (newScrollEl) newScrollEl.scrollTop = scrollTop;
+    }
   };
 
   const bind = () => {
@@ -138,7 +144,7 @@ function mountAmoFilterPanel(hostEl, opts) {
         expandedKey = expandedKey === btn.closest(".amo-f-row")?.dataset.key
           ? null
           : btn.closest(".amo-f-row")?.dataset.key;
-        paint();
+        paint({ preserveScroll: true });
       };
     });
     hostEl.querySelectorAll(".amo-f-from").forEach(inp => {
@@ -167,7 +173,6 @@ function mountAmoFilterPanel(hostEl, opts) {
         const key = btn.dataset.key;
         hostEl.querySelectorAll(`.amo-f-cb[data-key="${key}"]`).forEach(cb => { cb.checked = false; });
         amoFilterSetMultiselect(draft, key, []);
-        paint();
       };
     });
     hostEl.querySelector(".amo-f-apply")?.addEventListener("click", () => {

@@ -79,7 +79,6 @@ const REPORT_FIELD_LABELS = {
   riskFlag: "Флаг риска",
   productPct: "% продукта",
   pilotPct: "% пилота",
-};
   title: "Название",
   assignee: "Ответственный",
   dueAt: "Срок",
