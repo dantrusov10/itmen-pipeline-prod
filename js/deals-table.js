@@ -1033,6 +1033,8 @@ function getSelectedDealIds() {
 }
 
 window.getSelectedDealIds = getSelectedDealIds;
+
+function syncDealsReportHashFromTable() {
   if (typeof updateDealsReportHash !== "function") return;
   updateDealsReportHash(buildDealsReportSpec(dealsTableColFilters, dealsTablePreset));
 }

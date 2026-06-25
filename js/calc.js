@@ -433,6 +433,11 @@ function categoryBadge(cat) {
   return `<span class="badge ${map[cat] || ""}">${escapeHtml(cat) || "—"}</span>`;
 }
 
+function categoryBadgeClass(cat) {
+  const map = { "Горячая": "badge-hot", "Тёплая": "badge-warm", "Наблюдение": "badge-watch", "Отказ": "badge-drop" };
+  return map[cat] || "";
+}
+
 function calcMetrics(deals) {
   const all = deals.map(enrichDeal);
   const totalPipeline = all.reduce((s, x) => s + (x.expectedAmount || 0), 0);

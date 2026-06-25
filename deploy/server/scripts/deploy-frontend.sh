@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="/opt/itmen-pipeline"
-REPO="${ITMEN_REPO:-https://github.com/dantrusov10/itmen-pipeline.git}"
+REPO="${ITMEN_REPO:-https://github.com/dantrusov10/itmen-pipeline-prod.git}"
 BRANCH="${ITMEN_BRANCH:-master}"
 TMP="$(mktemp -d)"
 
