@@ -1,13 +1,29 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "collections": [
     "deals",
+    "list_items",
+    "scoring_criteria",
     "pipeline_meta",
     "managers",
+    "deal_risks",
+    "deal_scores",
+    "deal_score_history",
+    "deal_score_history_items",
+    "deal_tech",
+    "deal_seeking_segments",
+    "deal_project_tasks",
+    "deal_as_is",
+    "deal_change_pains",
+    "deal_competitors",
     "audit_log",
     "snapshots_daily",
     "snapshots_deals",
     "import_log"
   ],
-  "notes": "deals.payload и pipeline_meta.state_payload — страховка полного JSON"
+  "relations": [
+    "deal_* → deals (cascade delete)",
+    "deal_score_history_items → deal_score_history"
+  ],
+  "notInPb": "Реестр вендоров/продуктов (globalCatalog) — architecture-data.js на фронте"
 }
