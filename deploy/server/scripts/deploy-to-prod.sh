@@ -13,9 +13,13 @@ scp "${REPO}/deploy/server/api/package.json" "${HOST}:${REMOTE}/api/"
 
 ssh "${HOST}" "cd ${REMOTE}/api && npm install --omit=dev"
 
-scp -r "${REPO}/css" "${REPO}/js" "${REPO}/index.html" "${HOST}:${REMOTE}/frontend/current/"
+scp -r "${REPO}/css" "${HOST}:${REMOTE}/frontend/current/"
+scp -r "${REPO}/js" "${HOST}:${REMOTE}/frontend/current/"
+scp "${REPO}/index.html" "${HOST}:${REMOTE}/frontend/current/"
 scp -r "${REPO}/kp" "${HOST}:${REMOTE}/frontend/current/" 2>/dev/null || true
 scp -r "${REPO}/assets" "${HOST}:${REMOTE}/frontend/current/" 2>/dev/null || true
+
+ssh "${HOST}" "chmod -R a+rX ${REMOTE}/frontend/current/css ${REMOTE}/frontend/current/js ${REMOTE}/frontend/current/assets ${REMOTE}/frontend/current/kp 2>/dev/null || true; rm -f ${REMOTE}/frontend/current/css/index.html"
 
 scp "${REPO}/deploy/server/scripts/"*.py "${REPO}/deploy/server/scripts/"*.js "${REPO}/deploy/server/scripts/"*.sh \
   "${HOST}:${REMOTE}/scripts/" 2>/dev/null || true
