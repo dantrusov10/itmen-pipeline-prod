@@ -159,6 +159,15 @@ async function createUser({ email, password, role, managerName, displayName }) {
 
 async function updateUser(userId, patch) {
   const body = {};
+  if (patch.email != null) {
+    const email = String(patch.email).trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Некорректный логин (email)");
+    }
+    const dup = await findOne("pipeline_users", `email="${email.replace(/"/g, '\\"')}"`);
+    if (dup && dup.id !== userId) throw new Error("Этот логин уже занят");
+    body.email = email;
+  }
   if (patch.role != null) body.role = patch.role;
   if (patch.managerName != null) body.manager_name = patch.managerName;
   if (patch.displayName != null) body.display_name = patch.displayName;
@@ -167,7 +176,17 @@ async function updateUser(userId, patch) {
     body.passwordConfirm = patch.password;
   }
   const row = await updateRecord("pipeline_users", userId, body);
-  return { id: row.id, email: row.email, role: row.role };
+  if (body.email) {
+    const prof = await findOne("user_profiles", `user_id="${userId}"`);
+    if (prof) await updateRecord("user_profiles", prof.id, { email: body.email });
+  }
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    managerName: row.manager_name || "",
+    displayName: row.display_name || row.email,
+  };
 }
 
 async function deleteUser(userId) {
