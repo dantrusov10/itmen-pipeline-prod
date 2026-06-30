@@ -190,15 +190,15 @@ function renderCompetitorRow(segId, idx, entry) {
     <div class="comp-reasons">
       <div class="comp-reject-wrap" style="display:${showReject ? "block" : "none"}">
         <label>Почему отказались</label>
-        <textarea class="comp-reject" placeholder="Причины отказа от вендора">${escapeHtml(entry.rejectReason || "")}</textarea>
+        <textarea class="comp-reject auto-grow" rows="1" placeholder="Причины отказа от вендора">${escapeHtml(entry.rejectReason || "")}</textarea>
       </div>
       <div class="comp-continue-wrap" style="display:${showContinue ? "block" : "none"}">
         <label>Почему продолжают смотреть / что нравится</label>
-        <textarea class="comp-continue" placeholder="Что привлекает, почему в short-list">${escapeHtml(entry.continueReason || "")}</textarea>
+        <textarea class="comp-continue auto-grow" rows="1" placeholder="Что привлекает, почему в short-list">${escapeHtml(entry.continueReason || "")}</textarea>
       </div>
       <div>
         <label>Комментарий</label>
-        <textarea class="comp-comment" placeholder="Доп. контекст: демо, контакты, цена…">${escapeHtml(entry.comment || "")}</textarea>
+        <textarea class="comp-comment auto-grow" rows="1" placeholder="Доп. контекст: демо, контакты, цена…">${escapeHtml(entry.comment || "")}</textarea>
       </div>
     </div>
   </div>`;
@@ -252,6 +252,7 @@ function addCompetitorRow(segId) {
   if (empty) empty.remove();
   const idx = rowsEl.querySelectorAll(".comp-row").length;
   rowsEl.insertAdjacentHTML("beforeend", renderCompetitorRow(segId, idx, {}));
+  if (typeof bindAutoGrowTextareas === "function") bindAutoGrowTextareas(rowsEl);
 }
 
 function removeCompetitorRow(btn) {
@@ -298,7 +299,7 @@ function renderSegmentAsIsRow(segId, data, tr) {
       ? `Другое: <input type="text" class="seg-other-label" id="seek-other-label" placeholder="Укажите, что ищут" value="${escapeHtml(tr?.seekingOtherLabel || "")}" oninput="updateOtherSegmentTitles()">`
       : escapeHtml(seg?.label || segId)}</div>
     ${renderVendorPicker(segId, data)}
-    <div style="margin-top:.35rem"><input class="seg-comment" placeholder="Как работает сейчас (кратко)" value="${escapeHtml(data.comment || "")}"></div>
+    <div style="margin-top:.35rem"><textarea class="seg-comment auto-grow" rows="1" placeholder="Как работает сейчас (кратко)">${escapeHtml(data.comment || "")}</textarea></div>
   </div>`;
 }
 
@@ -307,7 +308,7 @@ function renderSegmentPainRow(segId, text, tr) {
   const label = segId === OTHER_SEGMENT_ID ? getOtherSegmentLabel(tr) : (seg?.label || segId);
   return `<div class="seg-pain-row" data-seg="${segId}">
     <label>Боли / почему меняют — ${escapeHtml(label)}</label>
-    <textarea class="seg-pain" placeholder="Что не устраивает, триггер смены">${escapeHtml(text || "")}</textarea>
+    <textarea class="seg-pain auto-grow" rows="1" placeholder="Что не устраивает, триггер смены">${escapeHtml(text || "")}</textarea>
   </div>`;
 }
 
@@ -315,15 +316,17 @@ function renderProjectTasksRows(tasks) {
   const list = tasks?.length ? tasks : [""];
   return `<div id="project-tasks-panel">${list.map(t =>
     `<div class="task-row">
-      <input class="proj-task-input" value="${escapeHtml(t)}" placeholder="Задача проекта">
+      <textarea class="proj-task-input auto-grow" rows="1" placeholder="Задача проекта">${escapeHtml(t)}</textarea>
       <button type="button" class="btn btn-sm btn-danger task-remove" onclick="removeTaskRow(this)" title="Удалить">✕</button>
     </div>`
   ).join("")}</div>
   <button type="button" class="btn btn-sm" onclick="addTaskRow()">+ Добавить задачу</button>`;
 }
 
-function renderTechSection(tr) {
+function renderTechSection(tr, deal) {
   tr = migrateTechResearch(tr);
+  const productPct = deal?.productFeasibilityPct ?? tr.productRequirementsPct;
+  const pilotPct = deal?.pilotFeasibilityPct ?? tr.pilotRequirementsPct;
   const segments = window.ITMEN_CONFIG?.techSegments || [];
   const selected = new Set(tr.seekingSegments || []);
 
@@ -376,14 +379,14 @@ function renderTechSection(tr) {
       <div class="form-grid">
         <div>
           <label>% требований проекта (продукт) ${hint(window.ITMEN_CONFIG?.fieldHints?.productReqPct || "")}</label>
-          <input type="number" min="0" max="100" id="f-productReqPct" value="${tr.productRequirementsPct ?? ""}" placeholder="0–100">
+          <input type="number" min="0" max="100" id="f-productReqPct" value="${productPct ?? ""}" placeholder="0–100">
         </div>
         <div>
           <label>% требований пилота ${hint(window.ITMEN_CONFIG?.fieldHints?.pilotReqPct || "")}</label>
-          <input type="number" min="0" max="100" id="f-pilotReqPct" value="${tr.pilotRequirementsPct ?? ""}" placeholder="0–100">
+          <input type="number" min="0" max="100" id="f-pilotReqPct" value="${pilotPct ?? ""}" placeholder="0–100">
         </div>
       </div>
-      <div class="muted">Эти % используются моделью для оценки «Техн. соответствие».</div>
+      <div class="muted">Подставляются из индексов реализуемости на вкладках «Пилот» и «Продукт»; влияют на критерий «Техн. соответствие» в скоринге.</div>
     </div>`;
 }
 
@@ -413,6 +416,11 @@ function syncTechSegmentPanels() {
   pain.innerHTML = segs.map(id => renderSegmentPainRow(id, prev.changePains[id], trCtx)).join("");
   if (comp) comp.innerHTML = segs.map(id => renderSegmentCompetitorBlock(id, prev.competitorEntries[id], trCtx)).join("");
   syncSeekOtherLabelToPanels();
+  if (typeof bindAutoGrowTextareas === "function") {
+    bindAutoGrowTextareas(document.getElementById("asis-panel"));
+    bindAutoGrowTextareas(document.getElementById("pain-panel"));
+    bindAutoGrowTextareas(document.getElementById("comp-panel"));
+  }
 }
 
 function renderVendorDropdownOptions(results) {
@@ -481,10 +489,12 @@ function addTaskRow() {
   if (!panel) return;
   const row = document.createElement("div");
   row.className = "task-row";
-  row.innerHTML = `<input class="proj-task-input" placeholder="Задача проекта">
+  row.innerHTML = `<textarea class="proj-task-input auto-grow" rows="1" placeholder="Задача проекта"></textarea>
     <button type="button" class="btn btn-sm btn-danger task-remove" onclick="removeTaskRow(this)" title="Удалить">✕</button>`;
   panel.appendChild(row);
-  row.querySelector("input")?.focus();
+  const ta = row.querySelector("textarea");
+  if (typeof bindAutoGrowTextarea === "function") bindAutoGrowTextarea(ta);
+  ta?.focus();
 }
 
 function removeTaskRow(btn) {
@@ -492,7 +502,9 @@ function removeTaskRow(btn) {
   const row = btn.closest(".task-row");
   if (!panel || !row) return;
   if (panel.querySelectorAll(".task-row").length <= 1) {
-    row.querySelector(".proj-task-input").value = "";
+    const ta = row.querySelector(".proj-task-input");
+    if (ta) ta.value = "";
+    if (typeof autoGrowTextarea === "function") autoGrowTextarea(ta);
     return;
   }
   row.remove();

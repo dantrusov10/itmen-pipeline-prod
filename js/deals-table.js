@@ -49,6 +49,13 @@ function dealPainsPreview(d) {
   return text.length > 40 ? text.slice(0, 38) + "…" : text;
 }
 
+function dealTaskStatus(d) {
+  const due = (typeof getDealTaskDue === "function" && getDealTaskDue(d.id)) || d.taskDue || "";
+  if (!String(due).trim()) return "Нет задачи";
+  if (d.daysTo != null && d.daysTo < 0) return "Просрочена";
+  return "Есть задача";
+}
+
 const DEALS_TABLE_COLS = [
   {
     key: "customer",
@@ -56,7 +63,9 @@ const DEALS_TABLE_COLS = [
     filter: "text",
     get: d => d.customer,
     render(d) {
-      return `<td class="col-customer"><strong>${escapeHtml(d.customer)}</strong></td>`;
+      const id = escapeHtml(d.id || "");
+      const href = `#deal/${encodeURIComponent(d.id || "")}`;
+      return `<td class="col-customer"><a class="deal-page-link" href="${href}" data-deal-id="${id}" data-return="deals" onclick="return dealPageLinkClick(event)"><strong>${escapeHtml(d.customer)}</strong></a></td>`;
     },
   },
   {
@@ -78,6 +87,31 @@ const DEALS_TABLE_COLS = [
     render(d) {
       const av = typeof ownerAvatarHtml === "function" ? ownerAvatarHtml(d.owner) : "";
       return `<td class="col-owner"><span class="owner-cell">${av}${escapeHtml(d.owner)}</span></td>`;
+    },
+  },
+  {
+    key: "presaleOwner",
+    label: "Отв. пре-сейл",
+    filter: "multiselect",
+    filterOptions: () => typeof getPresaleStaffNames === "function"
+      ? getPresaleStaffNames()
+      : (state?.lists?.presale_owners || []),
+    get: d => (typeof presaleOwnerForDeal === "function" ? presaleOwnerForDeal(d) : (d.presale?.owner || "")) || "—",
+    render(d) {
+      const owner = typeof presaleOwnerForDeal === "function" ? presaleOwnerForDeal(d) : (d.presale?.owner || "");
+      const av = typeof ownerAvatarHtml === "function" ? ownerAvatarHtml(owner) : "";
+      return `<td class="col-presale-owner"><span class="owner-cell">${av}${escapeHtml(owner || "—")}</span></td>`;
+    },
+  },
+  {
+    key: "presaleStage",
+    label: "Этап пре-сейл",
+    filter: "multiselect",
+    filterOptions: () => typeof presaleStageOptions === "function" ? presaleStageOptions() : [],
+    get: d => (typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : d.presale?.stage) || "—",
+    render(d) {
+      const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "");
+      return `<td class="col-presale-stage"><small>${escapeHtml(st || "—")}</small></td>`;
     },
   },
   {
@@ -119,9 +153,10 @@ const DEALS_TABLE_COLS = [
     label: "Вероятность",
     num: true,
     filter: "range",
-    get: d => (d.manualProb > 0 ? d.manualProb * 100 : null),
+    get: d => manualProbDisplayPct(d.manualProb),
     render(d) {
-      return `<td class="num">${d.manualProb > 0 ? Math.round(d.manualProb * 100) + "%" : "—"}</td>`;
+      const p = manualProbDisplayPct(d.manualProb);
+      return `<td class="num">${p != null ? p + "%" : "—"}</td>`;
     },
   },
   {
@@ -172,19 +207,39 @@ const DEALS_TABLE_COLS = [
     label: "Отрасль",
     filter: "multiselect",
     filterOptions: deals => resolveIndustryFilterOptions(deals),
-    get: d => d.industry || "—",
+    get: d => formatIndustryValues(parseIndustryValues(d.industry)) || "—",
+    matchFilter(d, selected) {
+      const vals = parseIndustryValues(d.industry);
+      if (!vals.length) return selected.includes("—");
+      return vals.some(v => selected.includes(v));
+    },
     render(d) {
-      return `<td><small>${escapeHtml(d.industry || "—")}</small></td>`;
+      const text = formatIndustryValues(parseIndustryValues(d.industry)) || "—";
+      return `<td><small>${escapeHtml(text)}</small></td>`;
     },
   },
   {
     key: "taskDue",
     label: "Срок задачи",
     filter: "text",
-    get: d => d.taskDue || "",
+    get: d => (typeof getDealTaskDue === "function" && getDealTaskDue(d.id)) || d.taskDue || "",
     render(d) {
+      const due = (typeof getDealTaskDue === "function" && getDealTaskDue(d.id)) || d.taskDue || "";
       const overdue = d.daysTo != null && d.daysTo < 0;
-      return `<td class="col-date"><small>${escapeHtml(d.taskDue || "—")}${d.daysTo != null ? ` <span class="${overdue ? "text-warn" : ""}">(${d.daysTo} дн.)</span>` : ""}</small></td>`;
+      const dueLabel = due ? (typeof formatRuDate === "function" ? formatRuDate(due) : due) : "—";
+      return `<td class="col-date"><small>${escapeHtml(dueLabel)}${d.daysTo != null ? ` <span class="${overdue ? "text-warn" : ""}">(${d.daysTo} дн.)</span>` : ""}</small></td>`;
+    },
+  },
+  {
+    key: "taskStatus",
+    label: "Задачи",
+    filter: "multiselect",
+    filterOptions: () => ["Нет задачи", "Есть задача", "Просрочена"],
+    get: d => dealTaskStatus(d),
+    render(d) {
+      const st = dealTaskStatus(d);
+      const cls = st === "Просрочена" ? "text-warn" : st === "Нет задачи" ? "muted" : "";
+      return `<td><small class="${cls}">${escapeHtml(st)}</small></td>`;
     },
   },
   {
@@ -345,7 +400,8 @@ const DEALS_TABLE_COLS = [
     group: "main",
     get: d => d.lastUpdate || "",
     render(d) {
-      return `<td><small>${escapeHtml(d.lastUpdate || "—")}${d.daysSince != null ? ` (${d.daysSince} дн.)` : ""}</small></td>`;
+      const lu = d.lastUpdate ? (typeof formatRuDate === "function" ? formatRuDate(d.lastUpdate) : d.lastUpdate) : "—";
+      return `<td><small>${escapeHtml(lu)}${d.daysSince != null ? ` (${d.daysSince} дн.)` : ""}</small></td>`;
     },
   },
   {
@@ -361,7 +417,7 @@ const DEALS_TABLE_COLS = [
 ];
 
 const DEALS_COL_GROUPS = [
-  { id: "main", label: "Основное", keys: ["customer", "stage", "owner", "industry", "partner", "taskDue", "lastUpdate"] },
+  { id: "main", label: "Основное", keys: ["customer", "stage", "owner", "industry", "partner", "taskDue", "taskStatus", "lastUpdate"] },
   { id: "finance", label: "Суммы и бюджет", keys: ["amount", "weighted", "expectedBudget", "partnerDiscount", "clientDiscount", "budgetPeriod", "budgetStatus", "budgetPlanned"] },
   { id: "scoring", label: "Скоринг", keys: ["score", "category", "manualProb", "commitStatus"] },
   { id: "tech", label: "Тех. исследование", keys: ["seeking", "productPct", "pilotPct", "tasks", "competitors", "pains"] },
@@ -378,10 +434,21 @@ const DEALS_DEFAULT_VISIBLE_COLS = [
 let dealsVisibleColKeys = loadDealsVisibleColKeys();
 
 let dealsTableSort = { key: "amount", dir: "desc" };
-let dealsTableColFilters = {};
-let dealsTableSearch = "";
 let dealsTableBound = false;
 let dealsFilterOpen = false;
+let dealsMineOnly = localStorage.getItem("itmen_deals_mine") === "1";
+
+const DYNAMICS_DRILL_PRESETS = new Set(["pipelineDelta", "weightedDelta", "scoreDelta", "dealCountDelta"]);
+const PRESALE_DRILL_PRESETS = new Set(["presaleFailed", "dealIds", "presaleActive", "presaleSuccess", "presaleOverdue", "presaleNoStage", "presalePipeline"]);
+
+function presaleRejectFilterActive() {
+  const pStage = getMultiselectFilter("presaleStage");
+  if (pStage.includes("Отказ")) return true;
+  const stage = getMultiselectFilter("stage");
+  if (stage.includes("Отказ")) return true;
+  if (dealsTablePreset?.type === "presaleFailed") return true;
+  return false;
+}
 
 function parseFilterNum(v) {
   if (v == null || v === "") return null;
@@ -439,13 +506,18 @@ function resolveStageFilterOptions(deals) {
 
 function resolveOwnerFilterOptions(deals) {
   const inactive = ["Павел Витков"];
-  const order = (state?.lists?.owners || []).filter(o => !inactive.includes(o));
-  const fromDeals = [...new Set((deals || []).map(d => d.owner).filter(Boolean))];
-  const all = order.filter(o => fromDeals.includes(o));
-  fromDeals.forEach(o => {
-    if (!inactive.includes(o) && !all.includes(o)) all.push(o);
-  });
-  return all.sort((a, b) => a.localeCompare(b, "ru"));
+  const byKey = new Map();
+  const add = n => {
+    const display = String(n || "").trim().replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+    if (!display || inactive.includes(display)) return;
+    const key = display.normalize("NFC").toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, display);
+  };
+  if (typeof ownerSelectOptions === "function") ownerSelectOptions().forEach(add);
+  else (state?.lists?.owners || []).forEach(add);
+  (state?.crmOwners || []).forEach(add);
+  (deals || []).forEach(d => add(d.owner));
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function resolveBudgetPeriodFilterOptions(deals) {
@@ -486,7 +558,12 @@ function resolvePartnerFilterOptions(deals) {
 }
 
 function resolveIndustryFilterOptions(deals) {
-  return [...new Set((deals || []).map(d => d.industry).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
+  const set = new Set();
+  (deals || []).forEach(d => {
+    const vals = typeof parseIndustryValues === "function" ? parseIndustryValues(d.industry) : [d.industry].filter(Boolean);
+    vals.forEach(v => set.add(v));
+  });
+  return [...set].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function loadDealsVisibleColKeys() {
@@ -511,7 +588,31 @@ function persistDealsVisibleCols() {
 
 function getVisibleDealsCols() {
   const map = Object.fromEntries(DEALS_TABLE_COLS.map(c => [c.key, c]));
-  return dealsVisibleColKeys.map(k => map[k]).filter(Boolean);
+  return dealsVisibleColKeys
+    .map(k => map[k])
+    .filter(Boolean)
+    .map(c => adaptDealsColForWorkspace(c))
+    .filter(Boolean);
+}
+
+function adaptDealsColForWorkspace(col) {
+  if (typeof isPresaleWorkspace !== "function" || !isPresaleWorkspace()) return col;
+  if (col.key === "stage") {
+    const src = DEALS_TABLE_COLS.find(c => c.key === "presaleStage");
+    return src ? { ...src, key: "stage", label: "Стадия" } : col;
+  }
+  if (col.key === "owner") {
+    const src = DEALS_TABLE_COLS.find(c => c.key === "presaleOwner");
+    return src ? { ...src, key: "owner", label: "Владелец" } : col;
+  }
+  if (col.key === "presaleStage" || col.key === "presaleOwner") return null;
+  return col;
+}
+
+function getDealsTableColByKey(key) {
+  const col = DEALS_TABLE_COLS.find(c => c.key === key);
+  if (!col) return null;
+  return adaptDealsColForWorkspace(col) || col;
 }
 
 function matchColFilter(col, d) {
@@ -519,6 +620,7 @@ function matchColFilter(col, d) {
   if (col.filter === "multiselect") {
     const selected = getMultiselectFilter(col.key);
     if (!selected.length) return true;
+    if (typeof col.matchFilter === "function") return col.matchFilter(d, selected);
     return selected.includes(dealCellText(col, d));
   }
   const f = (dealsTableColFilters[col.key] || "").trim();
@@ -529,12 +631,60 @@ function matchColFilter(col, d) {
   return dealCellText(col, d).toLowerCase().includes(f.toLowerCase());
 }
 
+function getActiveDealsReportSpec() {
+  return (typeof window !== "undefined" && window.dealsTableActiveSpec)
+    || (typeof dealsTableActiveSpec !== "undefined" ? dealsTableActiveSpec : null);
+}
+
 function applyDealsTableFilters(deals) {
-  let rows = deals;
-  if (typeof applyPresetFilter === "function" && dealsTablePreset) {
-    rows = applyPresetFilter(rows, dealsTablePreset);
+  let rows = deals || [];
+  const activeSpec = getActiveDealsReportSpec();
+  if (activeSpec && typeof filterDealsForReportSpec === "function") {
+    rows = filterDealsForReportSpec(rows, activeSpec);
+  } else {
+    if (typeof applyPresetFilter === "function" && dealsTablePreset) {
+      rows = applyPresetFilter(rows, dealsTablePreset);
+    }
+    if (typeof dealsReportSpecFilters !== "undefined" && dealsReportSpecFilters
+      && typeof dealMatchesAmoFilters === "function") {
+      const cols = typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+      const scoringOpts = dealsTableScoringMode ? { mode: dealsTableScoringMode } : (
+        typeof getDealsScoringOpts === "function" ? getDealsScoringOpts() : null
+      );
+      rows = rows.filter(d => dealMatchesAmoFilters(d, dealsReportSpecFilters, cols, scoringOpts));
+    }
   }
-  for (const col of getVisibleDealsCols()) {
+  const skipSystemExcludes = DYNAMICS_DRILL_PRESETS.has(dealsTablePreset?.type)
+    || PRESALE_DRILL_PRESETS.has(dealsTablePreset?.type);
+  if (!skipSystemExcludes) {
+    if (typeof isPresaleWorkspace === "function" && isPresaleWorkspace()) {
+      if (!presaleRejectFilterActive()) {
+        rows = rows.filter(d => {
+          const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : "";
+          return st !== "Отказ";
+        });
+      }
+    } else {
+      rows = typeof applyDefaultExcludeRejected === "function"
+        ? applyDefaultExcludeRejected(rows, getMultiselectFilter("stage"))
+        : rows.filter(d => d.stage !== "Отказ");
+      rows = typeof applyDefaultExcludeSuccess === "function"
+        ? applyDefaultExcludeSuccess(rows, getMultiselectFilter("stage"))
+        : rows;
+    }
+    if (typeof applyDefaultExcludeAdminOwners === "function") {
+      rows = applyDefaultExcludeAdminOwners(rows, getMultiselectFilter("owner"));
+    }
+  }
+  const colsToFilter = getVisibleDealsCols();
+  const activeKeys = new Set(colsToFilter.map(c => c.key));
+  for (const col of DEALS_TABLE_COLS) {
+    if (activeKeys.has(col.key)) continue;
+    if (col.filter === "multiselect" && getMultiselectFilter(col.key).length) colsToFilter.push(col);
+    else if (col.filter === "range" && (dealsTableColFilters[col.key + "__from"] || dealsTableColFilters[col.key + "__to"])) colsToFilter.push(col);
+    else if (dealsTableColFilters[col.key]) colsToFilter.push(col);
+  }
+  for (const col of colsToFilter) {
     if (col.filter === "range") {
       if (dealsTableColFilters[col.key + "__from"] || dealsTableColFilters[col.key + "__to"]) {
         rows = rows.filter(d => matchRangeFilter(col, d));
@@ -552,9 +702,24 @@ function applyDealsTableFilters(deals) {
   }
   const search = (dealsTableSearch || "").trim().toLowerCase();
   if (search) {
-    rows = rows.filter(d =>
-      getVisibleDealsCols().some(col => dealCellText(col, d).toLowerCase().includes(search))
-    );
+    rows = rows.filter(d => {
+      const parts = [
+        d.customer, d.id, d.owner, d.stage, d.industry, d.partner, d.pains,
+        d.presale?.owner, d.presale?.stage, d.dealType,
+        d.amoId != null ? `amo ${d.amoId}` : "",
+        d.amoId != null ? String(d.amoId) : "",
+        ...(getVisibleDealsCols().map(col => dealCellText(col, d))),
+      ];
+      const customer = String(d.customer || "");
+      customer.split(/[()/,]/).forEach(t => { if (t.trim()) parts.push(t.trim()); });
+      const hay = parts.join(" ").toLowerCase();
+      return hay.includes(search);
+    });
+  }
+  if (dealsMineOnly && typeof isDealMineForCurrentUser === "function") {
+    rows = rows.filter(d => isDealMineForCurrentUser(d));
+  } else if (dealsMineOnly && typeof isDealOwnedByCurrentUser === "function") {
+    rows = rows.filter(d => isDealOwnedByCurrentUser(d));
   }
   return rows;
 }
@@ -638,8 +803,8 @@ function renderDealsTableRow(d) {
     ${admin ? `<td class="col-bulk" onclick="event.stopPropagation()"><input type="checkbox" class="deal-bulk-cb" value="${escapeHtml(d.id)}"></td>` : ""}
     ${getVisibleDealsCols().map(c => c.render(d)).join("")}
     <td class="actions">
-      <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); openDealModal(${realIdx})" title="${viewTitle}">✏️</button>
-      ${canDel ? `<button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteDeal(${realIdx})" title="Удалить">🗑</button>` : ""}
+      <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); openDealById('${escapeHtml(d.id)}')" title="${viewTitle}">✏️</button>
+      ${canDel ? `<button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteDeal(${realIdx})" title="${admin ? "Удалить / архивировать" : "В архив"}">🗑</button>` : ""}
     </td>
   </tr>`;
 }
@@ -698,6 +863,9 @@ function setColFilterFromInput(el) {
   const bound = el.dataset.bound;
   if (bound) dealsTableColFilters[col + "__" + bound] = el.value;
   else dealsTableColFilters[col] = el.value;
+  if (typeof dealsReportSpecFilters !== "undefined") dealsReportSpecFilters = null;
+  if (typeof dealsTableActiveSpec !== "undefined") dealsTableActiveSpec = null;
+  if (typeof window !== "undefined") window.dealsTableActiveSpec = null;
 }
 
 function updateMultiselectToggleLabel(colKey) {
@@ -715,6 +883,9 @@ function syncMultiselectFilter(colKey) {
   const checked = [...wrap.querySelectorAll(".deals-ms-cb:checked")].map(cb => cb.value);
   if (checked.length) dealsTableColFilters[colKey] = checked;
   else delete dealsTableColFilters[colKey];
+  if (typeof dealsReportSpecFilters !== "undefined") dealsReportSpecFilters = null;
+  if (typeof dealsTableActiveSpec !== "undefined") dealsTableActiveSpec = null;
+  if (typeof window !== "undefined") window.dealsTableActiveSpec = null;
   updateMultiselectToggleLabel(colKey);
 }
 
@@ -774,8 +945,16 @@ function clearAllDealsFilters() {
   dealsTableColFilters = {};
   dealsTablePreset = null;
   dealsTableSearch = "";
+  dealsReportSpecFilters = null;
+  dealsTableActiveSpec = null;
+  if (typeof window !== "undefined") window.dealsTableActiveSpec = null;
+  dealsMineOnly = false;
+  localStorage.setItem("itmen_deals_mine", "0");
+  if (typeof closeDealsFilterPop === "function") closeDealsFilterPop();
   const gs = document.getElementById("deals-global-search");
   if (gs) gs.value = "";
+  const mineCb = document.getElementById("deals-mine-only");
+  if (mineCb) mineCb.checked = false;
   document.querySelectorAll(".deals-col-filter").forEach(el => { el.value = ""; });
   document.querySelectorAll(".deals-ms-cb").forEach(el => { el.checked = false; });
   document.querySelectorAll(".deals-ms-toggle").forEach(el => { el.textContent = "Все ▾"; });
@@ -890,8 +1069,40 @@ function applyDealsColumnsSelection() {
   renderDealsTable(getEnrichedDeals());
 }
 
+function closeDealsFilterPop() {
+  dealsFilterOpen = false;
+  const pop = document.getElementById("deals-filter-pop");
+  if (pop) pop.hidden = true;
+  if (typeof unregisterAmoFilterPop === "function") unregisterAmoFilterPop();
+}
+
+function openDealsFilterPop(btn) {
+  const pop = document.getElementById("deals-filter-pop");
+  if (!pop) return;
+  pop.hidden = false;
+  mountAmoFilterPanel(pop, {
+    filters: dealsTableColFilters,
+    deals: getEnrichedDeals(),
+    onApply: f => {
+      dealsTableColFilters = { ...f };
+      if (typeof dealsReportSpecFilters !== "undefined") dealsReportSpecFilters = null;
+      if (typeof dealsTableActiveSpec !== "undefined") dealsTableActiveSpec = null;
+      if (typeof window !== "undefined") window.dealsTableActiveSpec = null;
+      closeDealsFilterPop();
+      dealsTablePreset = null;
+      updateDealsTableBody(getEnrichedDeals());
+      syncDealsReportHashFromTable();
+      renderDealsFilterBanner();
+    },
+    onReset: () => { dealsTableColFilters = {}; },
+    onClose: () => closeDealsFilterPop(),
+  });
+  if (typeof registerAmoFilterPop === "function") {
+    registerAmoFilterPop(pop, btn?.closest(".amo-filter-anchor") || btn, closeDealsFilterPop);
+  }
+}
+
 function bindDealsTableEvents() {
-  if (dealsTableBound) return;
   dealsTableBound = true;
   const page = document.getElementById("page-deals");
   if (!page) return;
@@ -986,10 +1197,14 @@ function bindDealsTableEvents() {
       return;
     }
     const row = e.target.closest("#deals-tbody tr.deals-row-clickable");
-    if (row && !e.target.closest(".actions") && !e.target.closest("button")) {
+    if (row && !e.target.closest(".actions") && !e.target.closest("button") && !e.target.closest("a.deal-page-link")) {
       if (row.classList.contains("deals-row-loading")) return;
       const realIdx = state.deals.findIndex(x => x.id === row.dataset.id);
-      if (realIdx >= 0) openDealModal(realIdx);
+      if (realIdx >= 0) {
+        const dealId = state.deals[realIdx]?.id;
+        if (dealId && typeof openDealPage === "function") openDealPage(dealId, "deals");
+        else openDealModal(realIdx);
+      }
     }
   });
 
@@ -1011,6 +1226,14 @@ function bindDealsTableEvents() {
   });
 
   page.addEventListener("change", e => {
+    if (e.target.id === "deals-mine-only") {
+      dealsMineOnly = e.target.checked;
+      localStorage.setItem("itmen_deals_mine", dealsMineOnly ? "1" : "0");
+      updateDealsTableBody(getEnrichedDeals());
+      syncDealsReportHashFromTable();
+      renderDealsFilterBanner();
+      return;
+    }
     if (e.target.classList.contains("deals-ms-cb") && e.target.dataset.col) {
       syncMultiselectFilter(e.target.dataset.col);
       dealsTablePreset = null;
@@ -1053,7 +1276,10 @@ window.getSelectedDealIds = getSelectedDealIds;
 
 function syncDealsReportHashFromTable() {
   if (typeof updateDealsReportHash !== "function") return;
-  updateDealsReportHash(buildDealsReportSpec(dealsTableColFilters, dealsTablePreset));
+  const spec = typeof buildDealsReportSpecFromTable === "function"
+    ? buildDealsReportSpecFromTable()
+    : buildDealsReportSpec(dealsTableColFilters, dealsTablePreset);
+  updateDealsReportHash(spec);
 }
 
 function renderDealsFilterBanner() {
@@ -1078,9 +1304,10 @@ function renderDealsTable(deals) {
     : 0;
   el.innerHTML = `
     <div class="deals-toolbar">
-      <button class="btn btn-primary" onclick="openDealModal()">+ Добавить</button>
+      <button class="btn btn-primary" onclick="openNewDealPage('deals')">+ Добавить</button>
       ${admin ? `<label class="btn" style="cursor:pointer">⬆️ Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>` : ""}
       <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск…" value="${escapeHtml(dealsTableSearch)}">
+      <label class="dash-mine-toggle muted deals-mine-toggle"><input type="checkbox" id="deals-mine-only" ${dealsMineOnly ? "checked" : ""}> Только мои</label>
       <div class="amo-filter-anchor">
         <button type="button" class="btn btn-sm${dealsFilterOpen ? " btn-primary" : ""}" id="deals-filters-btn">🔍 Фильтры${filterN ? ` (${filterN})` : ""}</button>
         <div class="amo-filter-pop" id="deals-filter-pop" ${dealsFilterOpen ? "" : "hidden"}></div>
@@ -1114,27 +1341,12 @@ function renderDealsTable(deals) {
 
   document.getElementById("deals-filters-btn")?.addEventListener("click", e => {
     e.stopPropagation();
-    dealsFilterOpen = !dealsFilterOpen;
-    const pop = document.getElementById("deals-filter-pop");
-    if (!pop) return;
+    const btn = e.target;
     if (dealsFilterOpen) {
-      pop.hidden = false;
-      mountAmoFilterPanel(pop, {
-        filters: dealsTableColFilters,
-        deals,
-        onApply: f => {
-          dealsTableColFilters = { ...f };
-          dealsFilterOpen = false;
-          pop.hidden = true;
-          dealsTablePreset = null;
-          updateDealsTableBody(getEnrichedDeals());
-          syncDealsReportHashFromTable();
-          renderDealsFilterBanner();
-        },
-        onReset: () => { dealsTableColFilters = {}; },
-      });
+      closeDealsFilterPop();
     } else {
-      pop.hidden = true;
+      dealsFilterOpen = true;
+      openDealsFilterPop(btn);
     }
   });
 
@@ -1154,18 +1366,29 @@ function renderDealsTable(deals) {
 
 window.ITMEN_AVATARS = {};
 
+function normalizeAvatarOwnerKey(name) {
+  return String(name || "")
+    .replace(/\u00a0/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFC")
+    .toLowerCase();
+}
+
 async function loadManagerAvatars() {
-  if (window.ITMEN_API?.backend !== "pocketbase" || typeof apiLoadAvatars !== "function") return;
+  if (window.ITMEN_API?.backend !== "pocketbase") return;
+  if (typeof apiLoadAvatarsResolved !== "function") return;
   try {
-    const { map } = await apiLoadAvatars();
-    window.ITMEN_AVATARS = map || {};
+    window.ITMEN_AVATARS = await apiLoadAvatarsResolved();
   } catch (e) {
     console.warn("avatars:", e);
   }
 }
 
 function ownerAvatarHtml(name) {
-  const url = window.ITMEN_AVATARS?.[name];
+  const avatars = window.ITMEN_AVATARS || {};
+  const raw = String(name || "").trim();
+  const url = avatars[raw] || avatars[normalizeAvatarOwnerKey(raw)];
   if (!url) return `<span class="owner-avatar owner-avatar-ph" aria-hidden="true"></span>`;
   return `<img src="${escapeHtml(url)}" class="owner-avatar" alt="" loading="lazy">`;
 }
@@ -1194,7 +1417,7 @@ function dealMatchesKanbanFilters(d, filters) {
   const enriched = typeof enrichDeal === "function" ? enrichDeal(d) : d;
   const q = (filters.q || "").trim().toLowerCase();
   if (q) {
-    const hay = `${enriched.customer || ""} ${enriched.id || ""} ${enriched.owner || ""}`.toLowerCase();
+    const hay = `${enriched.customer || ""} ${enriched.id || ""} ${enriched.owner || ""} ${enriched.presale?.owner || ""} ${enriched.presale?.stage || ""}`.toLowerCase();
     if (!hay.includes(q)) return false;
   }
   const fields = filters.fields || {};

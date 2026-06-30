@@ -45,12 +45,30 @@ async function refreshUser(token) {
   };
 }
 
+function parseUserRoles(user) {
+  if (!user) return [];
+  if (user.roles?.length) return user.roles;
+  const r = String(user.role || "manager").toLowerCase();
+  if (r === "admin") return ["admin", "manager", "presale"];
+  if (r === "manager_presale" || r === "manager+presale") return ["manager", "presale"];
+  if (r === "presale") return ["presale"];
+  return ["manager"];
+}
+
+function userHasRole(user, role) {
+  const roles = parseUserRoles(user);
+  if (roles.includes("admin")) return true;
+  return roles.includes(role);
+}
+
 function normalizeUser(record) {
   if (!record) return null;
+  const role = record.role || "manager";
   return {
     id: record.id,
     email: record.email,
-    role: record.role || "manager",
+    role,
+    roles: parseUserRoles({ role }),
     managerName: record.manager_name || "",
     displayName: record.display_name || record.manager_name || record.email,
   };
@@ -82,20 +100,32 @@ function requireAuth(loadUser = true) {
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({ error: "Доступно только администратору" });
-  }
-  next();
+  if (userHasRole(req.user, "admin")) return next();
+  return res.status(403).json({ error: "Доступно только администратору" });
+}
+
+function canEditSalesDeal(user, deal) {
+  if (!user || !deal) return false;
+  if (user.role === "admin" || userHasRole(user, "admin")) return true;
+  if (!userHasRole(user, "manager")) return false;
+  const self = String(user.managerName || user.displayName || "").trim();
+  const owner = String(deal.owner || "").trim();
+  return Boolean(self && owner && owner.normalize("NFC").toLowerCase() === self.normalize("NFC").toLowerCase());
+}
+
+function canEditPresaleDeal(user, deal) {
+  if (!user || !deal) return false;
+  if (user.role === "admin" || userHasRole(user, "admin")) return true;
+  return userHasRole(user, "presale");
 }
 
 function canEditDeal(user, deal) {
-  if (!user || !deal) return false;
-  if (user.role === "admin") return true;
-  return Boolean(user.managerName) && deal.owner === user.managerName;
+  return canEditSalesDeal(user, deal) || canEditPresaleDeal(user, deal);
 }
 
 function canDeleteDeal(user, deal) {
-  return canEditDeal(user, deal);
+  if (user?.role === "admin" || userHasRole(user, "admin")) return true;
+  return canEditSalesDeal(user, deal);
 }
 
 function resolveTaskAssignee(user, requested) {
@@ -116,9 +146,13 @@ module.exports = {
   loginUser,
   refreshUser,
   normalizeUser,
+  parseUserRoles,
+  userHasRole,
   requireAuth,
   requireAdmin,
   canEditDeal,
+  canEditSalesDeal,
+  canEditPresaleDeal,
   canDeleteDeal,
   resolveTaskAssignee,
 };

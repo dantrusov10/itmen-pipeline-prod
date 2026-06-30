@@ -8,6 +8,8 @@ const {
   deleteRecord,
   deleteByFilter,
 } = require("./pb-client");
+const { mergePresaleIntoDeals } = require("./presale-data");
+const { loadSalesLossMetaMap, mergeSalesLossExtraIntoDeal, setSalesLossExtra } = require("./sales-loss-meta");
 
 function isoDate(val) {
   if (!val) return null;
@@ -27,8 +29,13 @@ function groupBy(rows, key) {
 
 function listsFromRows(rows) {
   const lists = {};
+  const configKeys = new Set([
+    "kanban_stages", "presale_kanban_stages", "partner_kanban_stages", "tech_partner_kanban_stages",
+  ]);
   const sorted = [...rows].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   for (const row of sorted) {
+    if (row.active === false) continue;
+    if (configKeys.has(row.list_key)) continue;
     if (!lists[row.list_key]) lists[row.list_key] = [];
     lists[row.list_key].push(row.value);
   }
@@ -90,7 +97,23 @@ function mapDealRow(d) {
     archived_at: d.archivedAt || null,
     loss_reason: d.lossReason || "",
     duplicate_of: d.duplicateOf || "",
+    pilot_feasibility_pct: d.pilotFeasibilityPct ?? null,
+    product_feasibility_pct: d.productFeasibilityPct ?? null,
+    pilot_req_count: d.pilotReqCount ?? null,
+    product_req_count: d.productReqCount ?? null,
+    requirements_updated_at: d.requirementsUpdatedAt || null,
+    presale_stage: d.presale?.stage || d.presale_stage || "",
+    presale_owner: d.presale?.owner || d.presale_owner || "",
   };
+}
+
+function pickRequirementPct(dealPct, techPct) {
+  const d = dealPct != null && dealPct !== "" ? Number(dealPct) : null;
+  const t = techPct != null && techPct !== "" ? Number(techPct) : null;
+  if (d != null && d > 0) return d;
+  if (t != null && t > 0) return t;
+  if (d != null) return d;
+  return t;
 }
 
 function assembleDealChildren(deal, children) {
@@ -110,8 +133,8 @@ function assembleDealChildren(deal, children) {
   const tr = children.tech?.[0] || {};
   const techResearch = {
     seekingOtherLabel: tr.seeking_other_label || "",
-    productRequirementsPct: tr.product_requirements_pct,
-    pilotRequirementsPct: tr.pilot_requirements_pct,
+    productRequirementsPct: pickRequirementPct(deal.product_feasibility_pct, tr.product_requirements_pct),
+    pilotRequirementsPct: pickRequirementPct(deal.pilot_feasibility_pct, tr.pilot_requirements_pct),
     seekingSegments: (children.seeking || [])
       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
       .map(s => s.segment_id),
@@ -174,7 +197,15 @@ function assembleDealChildren(deal, children) {
     partner: deal.partner || "",
     partnerDiscount: deal.partner_discount || 0,
     clientDiscount: deal.client_discount || 0,
-    manualProb: deal.manual_prob || 0,
+    manualProb: (() => {
+      const n = Number(deal.manual_prob || 0);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      if (n <= 1) return n;
+      if (n <= 100) return n / 100;
+      let x = n;
+      while (x > 100) x /= 100;
+      return Math.min(1, x / 100);
+    })(),
     taskDue: deal.task_due || "",
     budgetPeriod: deal.budget_period || "",
     budgetStatus: deal.budget_status || "",
@@ -197,6 +228,13 @@ function assembleDealChildren(deal, children) {
     archivedAt: deal.archived_at || null,
     lossReason: deal.loss_reason || "",
     duplicateOf: deal.duplicate_of || "",
+    pilotFeasibilityPct: deal.pilot_feasibility_pct ?? null,
+    productFeasibilityPct: deal.product_feasibility_pct ?? null,
+    pilotReqCount: deal.pilot_req_count ?? null,
+    productReqCount: deal.product_req_count ?? null,
+    requirementsUpdatedAt: deal.requirements_updated_at || null,
+    presale_stage: deal.presale_stage || "",
+    presale_owner: deal.presale_owner || "",
     scores,
     scoreReasons,
     scoresOverridden,
@@ -296,13 +334,16 @@ async function loadPipelineState({ lite = false, dealId = null, includeArchived 
     return assembleDealChildren(row, children);
   });
 
-  if (dealId) return deals[0] || null;
+  const dealsWithPresale = await mergePresaleIntoDeals(deals);
+  const lossMap = await loadSalesLossMetaMap();
+  const mergedDeals = dealsWithPresale.map(d => mergeSalesLossExtraIntoDeal(d, lossMap));
+  if (dealId) return mergedDeals[0] || null;
 
   const meta = metaRow || {};
   const state = {
     lists: listsFromRows(listRows),
     scoring: scoringFromRows(scoringRows),
-    deals: lite ? deals.map(stripLiteDeal) : deals,
+    deals: lite ? mergedDeals.map(stripLiteDeal) : mergedDeals,
     nextId: meta.next_id || 1,
     pipelineFocus: {
       title: meta.focus_title || "",
@@ -345,7 +386,6 @@ async function loadLiteChildren() {
 
 async function deleteDealChildren(pbDealId) {
   const childCollections = [
-    "deal_score_history_items",
     "deal_score_history",
     "deal_scores",
     "deal_risks",
@@ -357,13 +397,25 @@ async function deleteDealChildren(pbDealId) {
     "deal_tech",
   ];
 
-  const histories = await listAll("deal_score_history", { filter: `deal="${pbDealId}"` });
-  for (const h of histories) {
-    await deleteByFilter("deal_score_history_items", `history="${h.id}"`);
+  try {
+    const histories = await listAll("deal_score_history", { filter: `deal="${pbDealId}"` });
+    for (const h of histories) {
+      try {
+        await deleteByFilter("deal_score_history_items", `history="${h.id}"`);
+      } catch (e) {
+        console.warn(`deleteDealChildren: deal_score_history_items history=${h.id}`, e.message);
+      }
+    }
+  } catch (e) {
+    console.warn("deleteDealChildren: deal_score_history", e.message);
   }
 
   for (const name of childCollections) {
-    await deleteByFilter(name, `deal="${pbDealId}"`);
+    try {
+      await deleteByFilter(name, `deal="${pbDealId}"`);
+    } catch (e) {
+      console.warn(`deleteDealChildren: ${name}`, e.message);
+    }
   }
 }
 
@@ -486,12 +538,39 @@ async function upsertDeal(d) {
     pbId = created.id;
   }
   await importDealChildren(pbId, d);
+  if (d.id) {
+    await setSalesLossExtra(d.id, {
+      lossCompetitorKey: d.lossCompetitorKey,
+      lossSolutionSegments: d.lossSolutionSegments,
+      lossItmenDiscoveryOnly: d.lossItmenDiscoveryOnly,
+      lossOtherComment: d.lossOtherComment,
+    });
+  }
   return pbId;
 }
 
 async function deleteDealByDealId(dealId) {
   const existing = await findOne("deals", `deal_id="${String(dealId).replace(/"/g, '\\"')}"`);
-  if (existing) await deleteRecord("deals", existing.id);
+  if (!existing) return;
+  const pbId = existing.id;
+  const crmChildren = [
+    "deal_activities",
+    "deal_files",
+    "deal_tasks",
+    "deal_contacts",
+    "deal_info",
+    "pilot_requirements",
+    "product_requirements",
+  ];
+  for (const name of crmChildren) {
+    try {
+      await deleteByFilter(name, `deal="${pbId}"`);
+    } catch (e) {
+      console.warn(`deleteDealByDealId: ${name}`, e.message);
+    }
+  }
+  await deleteDealChildren(pbId);
+  await deleteRecord("deals", pbId);
 }
 
 async function updatePipelineMeta(state, dataEpoch) {

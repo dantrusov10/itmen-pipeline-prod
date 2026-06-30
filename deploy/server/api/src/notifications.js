@@ -61,10 +61,26 @@ async function notifyUserByEmail(email, payload) {
   return createNotification({ userId: users[0].id, ...payload });
 }
 
+async function notifyUserByManagerName(managerName, payload) {
+  const target = String(managerName || "").trim();
+  if (!target) return null;
+  const key = target.normalize("NFC").toLowerCase();
+  const users = await listAll("pipeline_users");
+  const hit = users.find(u => String(u.manager_name || "").trim().normalize("NFC").toLowerCase() === key);
+  if (!hit) return null;
+  const note = await createNotification({ userId: hit.id, ...payload });
+  try {
+    const { sendEmailNotification } = require("./mailer");
+    await sendEmailNotification(hit.email, payload);
+  } catch (_) { /* optional */ }
+  return note;
+}
+
 module.exports = {
   listNotifications,
   createNotification,
   markRead,
   markAllRead,
   notifyUserByEmail,
+  notifyUserByManagerName,
 };

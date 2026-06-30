@@ -1,0 +1,12 @@
+[Unit]
+Description=ITMen Pipeline AmoCRM inbound sync poll
+After=network.target itmen-pipeline-api.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/itmen-pipeline
+ExecStart=/usr/bin/node /opt/itmen-pipeline/scripts/run-amo-poll.js
+User=root
+
+[Install]
+WantedBy=multi-user.target

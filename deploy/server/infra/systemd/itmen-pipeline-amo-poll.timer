@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AmoCRM inbound sync every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=itmen-pipeline-amo-poll.service
+
+[Install]
+WantedBy=timers.target

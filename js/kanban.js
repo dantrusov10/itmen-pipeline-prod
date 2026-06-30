@@ -2,24 +2,75 @@
 let kanbanStages = null;
 let kanbanFilters = {};
 let kanbanFilterOpen = false;
+let kanbanMineOnly = localStorage.getItem("itmen_kanban_mine") === "1";
+
+function closeKanbanFilterPop() {
+  kanbanFilterOpen = false;
+  const pop = document.getElementById("kanban-filter-pop");
+  if (pop) pop.hidden = true;
+  document.getElementById("kanban-filters-btn")?.classList.remove("btn-primary");
+  if (typeof unregisterAmoFilterPop === "function") unregisterAmoFilterPop();
+}
+
+function openKanbanFilterPop(btn) {
+  const pop = document.getElementById("kanban-filter-pop");
+  if (!pop) return;
+  pop.hidden = false;
+  mountAmoFilterPanel(pop, {
+    filters: kanbanFilters,
+    deals: state?.deals || [],
+    onApply: f => {
+      kanbanFilters = { ...f, q: kanbanFilters.q };
+      closeKanbanFilterPop();
+      if (typeof updateKanbanReportHash === "function") updateKanbanReportHash(buildKanbanReportSpec());
+      renderKanban();
+      showToast("Фильтры применены");
+    },
+    onReset: () => {
+      kanbanFilters = { q: kanbanFilters.q };
+      kanbanMineOnly = false;
+      localStorage.setItem("itmen_kanban_mine", "0");
+    },
+    onClose: () => closeKanbanFilterPop(),
+  });
+  document.getElementById("kanban-filters-btn")?.classList.add("btn-primary");
+  if (typeof registerAmoFilterPop === "function") {
+    registerAmoFilterPop(pop, btn?.closest(".amo-filter-anchor") || btn, closeKanbanFilterPop);
+  }
+}
 
 async function loadKanbanStages() {
-  const all = typeof pipelineStageOptions === "function"
-    ? pipelineStageOptions()
-    : (state?.lists?.stages || []);
+  const canonical = typeof salesStageOptions === "function"
+    ? salesStageOptions()
+    : (typeof pipelineStageOptions === "function"
+      ? pipelineStageOptions()
+      : (state?.lists?.stages || []));
+  const allowed = new Set(canonical);
   try {
     const { stages } = await apiKanbanConfig();
     if (Array.isArray(stages) && stages.length) {
-      return stages;
+      const visible = stages.filter(s => s && s !== "Отказ" && allowed.has(s));
+      if (visible.length) return visible;
     }
   } catch (_) { /* offline */ }
-  return all;
+  return canonical.filter(s => s !== "Отказ");
 }
 
 function kanbanFilteredDeals() {
-  const deals = (state?.deals || []).filter(d => !d.archived);
+  let deals = (state?.deals || []).filter(d => !d.archived);
+  if (typeof getWorkspaceDeals === "function") {
+    deals = getWorkspaceDeals(deals);
+  }
   const q = (kanbanFilters.q || "").trim().toLowerCase();
   let rows = deals;
+  const stageSel = typeof amoFilterGetMultiselect === "function"
+    ? amoFilterGetMultiselect(kanbanFilters, "stage")
+    : [];
+  if (typeof applyDefaultExcludeRejected === "function") {
+    rows = applyDefaultExcludeRejected(rows, stageSel);
+  } else {
+    rows = rows.filter(d => d.stage !== "Отказ");
+  }
   if (typeof dealMatchesAmoFilters === "function") {
     rows = rows.filter(d => dealMatchesAmoFilters(d, kanbanFilters));
   }
@@ -29,14 +80,34 @@ function kanbanFilteredDeals() {
       return hay.includes(q);
     });
   }
+  if (kanbanMineOnly) {
+    const mineFn = typeof isDealMineForCurrentUser === "function"
+      ? isDealMineForCurrentUser
+      : (typeof isDealOwnedByCurrentUser === "function" ? isDealOwnedByCurrentUser : null);
+    if (mineFn) rows = rows.filter(d => mineFn(d));
+  }
   return rows;
 }
 
 function kanbanColSummary(col) {
+  const scores = col.map(d => enrichDeal(d).score).filter(v => v != null);
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
   return {
     count: col.length,
     sum: col.reduce((s, d) => s + (Number(d.amount) || 0), 0),
+    avgScore,
   };
+}
+
+function kanbanColHeadHtml(st, count, sum, avgScore) {
+  return `<div class="kanban-col-head">
+    <div class="kanban-col-title">${escapeHtml(st)}</div>
+    <div class="kanban-col-stats">
+      <span class="kanban-col-count badge">${count}</span>
+      <span class="kanban-col-sum">${formatMoney(sum)}</span>
+      ${avgScore != null ? `<span class="kanban-col-avg">Ø ${avgScore}</span>` : ""}
+    </div>
+  </div>`;
 }
 
 function renderKanbanBoardOnly() {
@@ -45,21 +116,16 @@ function renderKanbanBoardOnly() {
   const deals = kanbanFilteredDeals();
   board.innerHTML = kanbanStages.map(st => {
     const col = deals.filter(d => d.stage === st);
-    const { count, sum } = kanbanColSummary(col);
+    const { count, sum, avgScore } = kanbanColSummary(col);
     return `<div class="kanban-col" data-stage="${escapeHtml(st)}">
-      <div class="kanban-col-head">
-        <span>${escapeHtml(st)}</span>
-        <div class="kanban-col-stats">
-          <span class="badge">${count}</span>
-          <span class="kanban-col-sum muted">${formatMoney(sum)}</span>
-        </div>
-      </div>
+      ${kanbanColHeadHtml(st, count, sum, avgScore)}
       <div class="kanban-col-body" data-stage="${escapeHtml(st)}">
         ${col.map(d => kanbanCard(d)).join("")}
       </div>
     </div>`;
   }).join("");
   bindKanbanDnD();
+  bindKanbanMinimap();
   const meta = document.getElementById("kanban-meta");
   if (meta) meta.textContent = `${deals.length} сделок`;
   const btn = document.getElementById("kanban-filters-btn");
@@ -80,78 +146,123 @@ async function renderKanban() {
     : 0;
 
   el.innerHTML = `
+    <div class="kanban-page">
     <div class="kanban-toolbar">
       <input type="search" id="kanban-search" class="kanban-search" placeholder="Быстрый поиск…" value="${escapeHtml(kanbanFilters.q || "")}">
+      <label class="dash-mine-toggle muted kanban-mine-toggle"><input type="checkbox" id="kanban-mine-only" ${kanbanMineOnly ? "checked" : ""}> Только мои</label>
       <div class="amo-filter-anchor">
         <button type="button" class="btn btn-sm${kanbanFilterOpen ? " btn-primary" : ""}" id="kanban-filters-btn">🔍 Фильтры${filterN ? ` (${filterN})` : ""}</button>
         <div class="amo-filter-pop" id="kanban-filter-pop" ${kanbanFilterOpen ? "" : "hidden"}></div>
       </div>
       ${admin ? `<button type="button" class="btn btn-sm" id="kanban-config-btn">⚙ Настройки</button>` : ""}
       <span class="muted kanban-hint" id="kanban-meta">${deals.length} сделок</span>
-      <button type="button" class="btn btn-sm" onclick="openDealModal()">+ Сделка</button>
+      <button type="button" class="btn btn-sm" onclick="openNewDealPage('kanban')">+ Сделка</button>
     </div>
-    <div class="kanban-board" id="kanban-board">
-      ${kanbanStages.map(st => {
-        const col = deals.filter(d => d.stage === st);
-        const { count, sum } = kanbanColSummary(col);
-        return `<div class="kanban-col" data-stage="${escapeHtml(st)}">
-          <div class="kanban-col-head">
-            <span>${escapeHtml(st)}</span>
-            <div class="kanban-col-stats">
-              <span class="badge">${count}</span>
-              <span class="kanban-col-sum muted">${formatMoney(sum)}</span>
+    <div class="kanban-wrap">
+      <div class="kanban-board" id="kanban-board">
+        ${kanbanStages.map(st => {
+          const col = deals.filter(d => d.stage === st);
+          const { count, sum, avgScore } = kanbanColSummary(col);
+          return `<div class="kanban-col" data-stage="${escapeHtml(st)}">
+            ${kanbanColHeadHtml(st, count, sum, avgScore)}
+            <div class="kanban-col-body" data-stage="${escapeHtml(st)}">
+              ${col.map(d => kanbanCard(d)).join("")}
             </div>
-          </div>
-          <div class="kanban-col-body" data-stage="${escapeHtml(st)}">
-            ${col.map(d => kanbanCard(d)).join("")}
-          </div>
-        </div>`;
-      }).join("")}
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="kanban-minimap" id="kanban-minimap" title="Навигация по этапам"></div>
+    </div>
     </div>`;
 
   document.getElementById("kanban-search")?.addEventListener("input", e => {
     kanbanFilters.q = e.target.value;
     renderKanbanBoardOnly();
+    if (typeof updateKanbanReportHash === "function") updateKanbanReportHash(buildKanbanReportSpec());
+  });
+  document.getElementById("kanban-mine-only")?.addEventListener("change", e => {
+    kanbanMineOnly = e.target.checked;
+    localStorage.setItem("itmen_kanban_mine", kanbanMineOnly ? "1" : "0");
+    renderKanbanBoardOnly();
+    if (typeof updateKanbanReportHash === "function") updateKanbanReportHash(buildKanbanReportSpec());
   });
   document.getElementById("kanban-filters-btn")?.addEventListener("click", e => {
     e.stopPropagation();
-    kanbanFilterOpen = !kanbanFilterOpen;
-    const pop = document.getElementById("kanban-filter-pop");
-    if (!pop) return;
+    const btn = e.target;
     if (kanbanFilterOpen) {
-      pop.hidden = false;
-      mountAmoFilterPanel(pop, {
-        filters: kanbanFilters,
-        deals: state?.deals || [],
-        onApply: f => {
-          kanbanFilters = { ...f, q: kanbanFilters.q };
-          kanbanFilterOpen = false;
-          pop.hidden = true;
-          renderKanban();
-          showToast("Фильтры применены");
-        },
-        onReset: () => {
-          kanbanFilters = { q: kanbanFilters.q };
-        },
-      });
-      document.getElementById("kanban-filters-btn")?.classList.add("btn-primary");
+      closeKanbanFilterPop();
     } else {
-      pop.hidden = true;
-      document.getElementById("kanban-filters-btn")?.classList.remove("btn-primary");
+      kanbanFilterOpen = true;
+      openKanbanFilterPop(btn);
     }
   });
-  document.addEventListener("click", kanbanCloseFilterOnOutside, { once: true });
   document.getElementById("kanban-config-btn")?.addEventListener("click", () => openKanbanConfigPanel());
   bindKanbanDnD();
+  bindKanbanMinimap();
 }
 
-function kanbanCloseFilterOnOutside(e) {
-  if (!e.target.closest(".amo-filter-anchor")) {
-    kanbanFilterOpen = false;
-    const pop = document.getElementById("kanban-filter-pop");
-    if (pop) pop.hidden = true;
-    document.getElementById("kanban-filters-btn")?.classList.remove("btn-primary");
-  }
+function bindKanbanMinimap(opts = {}) {
+  const boardId = opts.boardId || "kanban-board";
+  const minimapId = opts.minimapId || "kanban-minimap";
+  const scrollEl = opts.scrollEl || document.querySelector(opts.wrapSelector || ".kanban-page .kanban-wrap");
+  const board = document.getElementById(boardId);
+  const minimap = document.getElementById(minimapId);
+  if (!scrollEl || !board || !minimap) return;
+  const stages = opts.stages
+    || kanbanStages
+    || (typeof presaleKanbanStageColumns === "function" ? presaleKanbanStageColumns() : null)
+    || [];
+  minimap.innerHTML = `<div class="kanban-minimap-track">
+    ${stages.map(() => `<span class="kanban-minimap-seg"></span>`).join("")}
+    <div class="kanban-minimap-viewport"></div>
+  </div>`;
+  const track = minimap.querySelector(".kanban-minimap-track");
+  const viewport = minimap.querySelector(".kanban-minimap-viewport");
+  if (!track || !viewport) return;
+
+  const update = () => {
+    const sw = board.scrollWidth;
+    const vw = scrollEl.clientWidth;
+    if (sw <= vw) {
+      minimap.hidden = true;
+      return;
+    }
+    minimap.hidden = false;
+    const tw = track.clientWidth;
+    const vpW = Math.max(24, (vw / sw) * tw);
+    viewport.style.width = `${vpW}px`;
+    viewport.style.left = `${(scrollEl.scrollLeft / (sw - vw)) * (tw - vpW)}px`;
+  };
+
+  scrollEl.onscroll = update;
+  window.addEventListener("resize", update);
+  update();
+
+  minimap.onclick = e => {
+    const rect = track.getBoundingClientRect();
+    const tw = track.clientWidth;
+    const vpW = viewport.offsetWidth;
+    const x = Math.max(0, Math.min(e.clientX - rect.left - vpW / 2, tw - vpW));
+    const ratio = tw - vpW > 0 ? x / (tw - vpW) : 0;
+    scrollEl.scrollLeft = ratio * (board.scrollWidth - scrollEl.clientWidth);
+  };
+
+  let drag = false;
+  viewport.onmousedown = e => {
+    drag = true;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  document.onmousemove = e => {
+    if (!drag) return;
+    const rect = track.getBoundingClientRect();
+    const tw = track.clientWidth;
+    const vpW = viewport.offsetWidth;
+    const x = Math.max(0, Math.min(e.clientX - rect.left - vpW / 2, tw - vpW));
+    const ratio = tw - vpW > 0 ? x / (tw - vpW) : 0;
+    scrollEl.scrollLeft = ratio * (board.scrollWidth - scrollEl.clientWidth);
+  };
+  document.onmouseup = () => { drag = false; };
 }
 
 function openKanbanConfigPanel() {
@@ -174,9 +285,11 @@ function openKanbanConfigPanel() {
     modal.querySelector("#kanban-config-close")?.addEventListener("click", () => modal.classList.remove("open"));
   }
   const body = modal.querySelector("#kanban-config-body");
-  const all = typeof pipelineStageOptions === "function"
-    ? pipelineStageOptions()
-    : (state?.lists?.stages || []);
+  const all = typeof salesStageOptions === "function"
+    ? salesStageOptions()
+    : (typeof pipelineStageOptions === "function"
+      ? pipelineStageOptions()
+      : (state?.lists?.stages || []));
   const visibleStages = kanbanStages || all;
   const hidden = all.filter(s => !visibleStages.includes(s));
   body.innerHTML = `
@@ -222,13 +335,20 @@ function openKanbanConfigPanel() {
     btn.onclick = () => btn.closest("li")?.remove();
   });
   body.querySelector("#kanban-config-save").onclick = async () => {
-    const stages = [...body.querySelectorAll("#kanban-config-list li")]
+    const listItems = [...body.querySelectorAll("#kanban-config-list li")];
+    const allStages = listItems.map(li => li.dataset.stage);
+    const stages = listItems
       .filter(li => li.querySelector(".kanban-col-vis")?.checked)
       .map(li => li.dataset.stage);
     if (!stages.length) return alert("Нужен хотя бы один столбец");
     try {
-      await apiSaveKanbanConfig(stages);
+      await apiSaveKanbanConfig({ stages, allStages });
       kanbanStages = stages;
+      if (state?.lists) {
+        const merged = [...allStages];
+        if (!merged.includes("Отказ")) merged.push("Отказ");
+        state.lists.stages = merged;
+      }
       modal.classList.remove("open");
       showToast("Столбцы сохранены");
       renderKanban();
@@ -255,15 +375,29 @@ function bindKanbanConfigDnD() {
 
 function kanbanCard(d) {
   const canEdit = canEditDeal(d);
-  return `<div class="kanban-card" draggable="${canEdit}" data-id="${escapeHtml(d.id)}" onclick="openDealById('${escapeHtml(d.id)}')">
+  const ed = enrichDeal(d);
+  return `<a class="kanban-card" href="#deal/${encodeURIComponent(d.id || "")}" draggable="${canEdit}" data-id="${escapeHtml(d.id)}" data-return="kanban" onclick="return dealPageLinkClick(event)">
     <div class="kanban-card-title">${escapeHtml(d.customer || "—")}</div>
-    <div class="kanban-card-meta"><span class="badge ${categoryBadgeClass(d.category)}">${escapeHtml(d.category)}</span>
-      <span class="muted owner-inline">${typeof ownerAvatarHtml === "function" ? ownerAvatarHtml(d.owner) : ""}${escapeHtml(d.owner || "")}</span></div>
-    <div class="kanban-card-amt">${formatMoney(d.amount || 0)}</div>
-  </div>`;
+    <div class="kanban-card-meta">
+      <span class="badge ${categoryBadgeClass(ed.category)}">${escapeHtml(ed.category)}</span>
+      ${ed.score != null ? `<span class="kanban-card-score">${ed.score}</span>` : ""}
+    </div>
+    <div class="kanban-card-foot">
+      <span class="kanban-card-owner muted">${typeof ownerAvatarHtml === "function" ? ownerAvatarHtml(d.owner) : ""}<span class="kanban-card-owner-name">${escapeHtml(d.owner || "")}</span></span>
+      <span class="kanban-card-amt">${formatMoney(d.amount || 0)}</span>
+    </div>
+  </a>`;
 }
 
-function openDealById(id) {
+function openDealById(id, ev) {
+  if (ev && (ev.ctrlKey || ev.metaKey) && typeof openDealInNewTab === "function") {
+    openDealInNewTab(id);
+    return;
+  }
+  if (typeof openDealPage === "function") {
+    openDealPage(id, activePage || "kanban");
+    return;
+  }
   const idx = (state.deals || []).findIndex(d => d.id === id);
   if (idx >= 0) openDealModal(idx);
 }
@@ -285,6 +419,10 @@ function bindKanbanDnD() {
       const newStage = col.dataset.stage;
       const idx = state.deals.findIndex(d => d.id === dealId);
       if (idx < 0) return;
+      if (typeof managerStageChangeBlocked === "function" && managerStageChangeBlocked(newStage, state.deals[idx].stage)) {
+        alert("Стадию «Пилот Окончен» может установить только пре-сейл (успех или отказ пилота).");
+        return;
+      }
       const deal = { ...state.deals[idx], stage: newStage };
       if (!canEditDeal(deal)) { alert("Нет прав"); return; }
       try {
@@ -302,5 +440,7 @@ function bindKanbanDnD() {
   });
 }
 
+window.kanbanColHeadHtml = kanbanColHeadHtml;
 window.renderKanban = renderKanban;
+window.bindKanbanMinimap = bindKanbanMinimap;
 window.openDealById = openDealById;

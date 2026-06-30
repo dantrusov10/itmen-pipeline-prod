@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITMen — Пайплайн</title>
+  <link rel="stylesheet" href="css/style.css?v=crm72">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-row">
+          <h1>ИТМен</h1>
+          <button type="button" class="sidebar-collapse-btn" id="sidebar-collapse" title="Свернуть меню" aria-label="Свернуть меню">◀</button>
+        </div>
+        <p>Пайплайн · Сделки · Скоринг</p>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-footer">Общий пайплайн · Google Таблица / сервер</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="topbar-left">
+            <button class="btn menu-toggle" id="menu-toggle">☰</button>
+            <h2 id="page-title">Дашборд пайплайна</h2>
+          </div>
+          <div class="topbar-right">
+            <div id="workspace-switcher" class="topbar-workspace"></div>
+            <div id="topbar-page-actions" class="topbar-page-actions"></div>
+            <div id="topbar-tools" class="topbar-tools"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="page" id="page-panel"></section>
+        <section class="page" id="page-deals"></section>
+        <section class="page" id="page-kanban"></section>
+        <section class="page" id="page-calendar"></section>
+        <section class="page" id="page-reports"></section>
+        <section class="page" id="page-scoring"></section>
+        <section class="page" id="page-profile"></section>
+        <section class="page" id="page-activities"></section>
+        <section class="page" id="page-deal"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="deal-modal">
+    <div class="modal">
+      <div class="modal-header modal-header-sticky">
+        <h3>Паспорт сделки</h3>
+        <div class="modal-header-actions">
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveDealModal()">Сохранить</button>
+          <button type="button" class="btn btn-sm" onclick="closeModal('deal-modal')" aria-label="Закрыть">✕</button>
+        </div>
+      </div>
+      <div class="deal-tabs-wrap" id="deal-tabs-wrap">
+        <nav class="deal-tabs" id="deal-tabs" role="tablist">
+          <button type="button" class="deal-tab active" data-tab="passport" role="tab" onclick="switchDealTab('passport')">Паспорт</button>
+          <button type="button" class="deal-tab" data-tab="pilot-req" role="tab" onclick="switchDealTab('pilot-req')">Пилот</button>
+          <button type="button" class="deal-tab" data-tab="product-req" role="tab" onclick="switchDealTab('product-req')">Продукт</button>
+          <button type="button" class="deal-tab" data-tab="events" role="tab" onclick="switchDealTab('events')">События</button>
+          <button type="button" class="deal-tab" data-tab="files" role="tab" onclick="switchDealTab('files')">Файлы</button>
+          <button type="button" class="deal-tab" data-tab="info" role="tab" onclick="switchDealTab('info')">Общая информация</button>
+          <button type="button" class="deal-tab" data-tab="contacts" role="tab" onclick="switchDealTab('contacts')">Контакты</button>
+        </nav>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="js/bootstrap.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/tech-research.js?v=crm72"></script>
+  <script src="js/passport-completeness.js?v=crm72"></script>
+  <script src="js/calc.js?v=crm72"></script>
+  <script src="js/gas-config.js?v=pb2"></script>
+  <script src="js/auth.js?v=crm72"></script>
+  <script src="js/workspaces.js?v=crm72"></script>
+  <script src="js/presale-auth.js?v=crm72"></script>
+  <script src="js/api.js?v=pb4"></script>
+  <script src="js/crm-api.js?v=crm72"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="js/pilot-map-xlsx.js?v=crm72"></script>
+  <script src="js/requirements-ui.js?v=crm72"></script>
+  <script src="js/report-filters.js?v=crm72"></script>
+  <script src="js/deals-table.js?v=crm72"></script>
+  <script src="js/amo-filter-pop.js?v=crm72"></script>
+  <script src="js/amo-filters.js?v=crm72"></script>
+  <script src="js/dynamics.js?v=crm72"></script>
+  <script src="js/pipeline-cache.js?v=perf3"></script>
+  <script src="js/table-resize.js?v=crm7"></script>
+  <script src="js/partner-picker.js?v=crm72"></script>
+  <script src="js/partner-funnel-ui.js?v=crm72"></script>
+  <script src="js/deal-crm-ui.js?v=crm72"></script>
+  <script src="js/kanban.js?v=crm72"></script>
+  <script src="js/calendar.js?v=crm72"></script>
+  <script src="js/profile.js?v=crm8"></script>
+  <script src="js/reports.js?v=crm7"></script>
+  <script src="js/notifications-ui.js?v=crm1"></script>
+  <script src="js/import-excel.js" defer></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+  <script src="js/export-deals-excel.js?v=feat1" defer></script>
+  <script src="js/auto-textarea.js?v=crm72"></script>
+  <script src="js/requirements-dashboard.js?v=crm72"></script>
+  <script src="js/dashboard-widgets.js?v=crm72"></script>
+  <script src="js/kp-calculator-bridge.js?v=crm72"></script>
+  <script src="js/presale-deal.js?v=crm72"></script>
+  <script src="js/deal-page.js?v=crm72"></script>
+  <script src="js/activities.js?v=crm72"></script>
+  <script src="js/presale-ui.js?v=crm72"></script>
+  <script src="js/app.js?v=crm72"></script>
+</body>
+</html>

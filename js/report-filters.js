@@ -1,7 +1,13 @@
 /* Drill-down: дашборд → таблица сделок + шаринг фильтров в URL */
 /* PILOT_STAGES — из calc.js */
 
-let dealsTablePreset = null;
+/* var — общее состояние фильтров таблицы (report-filters грузится до deals-table.js) */
+var dealsTableColFilters = {};
+var dealsTableSearch = "";
+var dealsTablePreset = null;
+var dealsTableScoringMode = null;
+var dealsReportSpecFilters = null;
+var dealsTableActiveSpec = null;
 
 function commitShortToLabel(short) {
   const c = (window.ITMEN_CONFIG?.commitStatuses || []).find(x => x.short === short);
@@ -31,7 +37,9 @@ function applyPresetFilter(rows, preset) {
       return rows.filter(d => {
         const types = normalizeRiskTypes(d);
         if (types.length && riskLabels(types).includes(label)) return true;
-        return d.riskFlag === label;
+        const flag = String(d.riskFlag || "");
+        if (flag === label) return true;
+        return flag.split(";").map(s => s.trim()).includes(label);
       });
     }
     case "risk":
@@ -49,6 +57,13 @@ function applyPresetFilter(rows, preset) {
       return rows.filter(d => d.category === "Горячая" && d.budgetStatus === "Нет бюджета");
     case "overdue":
       return rows.filter(d => d.daysTo != null && d.daysTo < 0);
+    case "overdue_tasks":
+      return rows.filter(d => d.daysTo != null && d.daysTo < 0);
+    case "no_tasks":
+      return rows.filter(d => {
+        const due = (typeof getDealTaskDue === "function" && getDealTaskDue(d.id)) || d.taskDue || "";
+        return !String(due).trim();
+      });
     case "segment": {
       const seg = preset.value;
       if (!seg) return rows;
@@ -74,19 +89,121 @@ function applyPresetFilter(rows, preset) {
       return rows.filter(d => typeof dealHasCompetitors === "function"
         ? dealHasCompetitors(d)
         : Object.values(d.techResearch?.competitorEntries || {}).flat().some(e => e && (e.vendor || e.product)));
+    case "strongCommits": {
+      const strongIds = ["protocol", "loi", "guarantee", "contract"];
+      return rows.filter(d => strongIds.includes(normalizeCommitStatus(d.commitStatus)));
+    }
+    case "confirmedBudget":
+      return rows.filter(d => (d.budgetStatus || "") === "Подтверждён");
+    case "dealIds": {
+      const ids = preset.value ? String(preset.value).split("|").filter(Boolean) : [];
+      if (!ids.length) return rows;
+      const set = new Set(ids);
+      return rows.filter(d => set.has(d.id));
+    }
+    case "presaleActive":
+      return rows.filter(d => {
+        const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "");
+        return st === "Подготовка к пилоту" || st === "В процессе пилота";
+      });
+    case "presaleSuccess":
+      return rows.filter(d => {
+        const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "");
+        return st === "Успех пилота" || Boolean(d.presale?.successWithoutPilot);
+      });
+    case "presaleFailed":
+      return rows.filter(d => {
+        const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "");
+        return st === "Отказ";
+      });
+    case "presaleOverdue": {
+      const now = Date.now();
+      return rows.filter(d => {
+        const st = typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "");
+        if (st !== "В процессе пилота") return false;
+        const end = d.presale?.pilotEnd;
+        if (!end) return false;
+        const t = new Date(end).getTime();
+        return !Number.isNaN(t) && t < now;
+      });
+    }
+    case "presaleNoStage":
+      return rows.filter(d => !(typeof resolvePresaleStage === "function" ? resolvePresaleStage(d) : (d.presale?.stage || "").trim()));
+    case "presalePipeline":
+      return rows;
+    case "pipelineDelta": {
+      const ids = preset.value ? String(preset.value).split("|").filter(Boolean) : [];
+      if (!ids.length) return [];
+      const set = new Set(ids);
+      return rows.filter(d => set.has(d.id));
+    }
+    case "weightedDelta":
+    case "scoreDelta":
+    case "dealCountDelta": {
+      const ids = preset.value ? String(preset.value).split("|").filter(Boolean) : [];
+      if (!ids.length) return [];
+      const set = new Set(ids);
+      return rows.filter(d => set.has(d.id));
+    }
     default:
       return rows;
   }
 }
 
-function buildDealsReportSpec(filters = {}, preset = null) {
-  return { filters: { ...filters }, preset: preset ? { ...preset } : null };
+function getDealsScoringOpts() {
+  return dealsTableScoringMode ? { mode: dealsTableScoringMode } : null;
 }
 
-function serializeDealsReportSpec(spec) {
+function scoringModeLabel(mode) {
+  if (mode === "prob_only") return "только вероятность менеджера";
+  if (mode === "no_prob") return "без вероятности менеджера";
+  if (mode === "with_prob") return "с вероятностью менеджера";
+  return null;
+}
+
+function buildDealsReportSpec(filters = {}, preset = null, mineOnly, scoringMode, opts = {}) {
+  const mine = mineOnly != null ? !!mineOnly : (typeof dealsMineOnly !== "undefined" ? !!dealsMineOnly : false);
+  const f = { ...(filters || {}) };
+  if (!opts.skipTableSearch && typeof dealsTableSearch !== "undefined" && dealsTableSearch.trim()) {
+    f.q = dealsTableSearch.trim();
+  }
+  const mode = scoringMode != null ? scoringMode : (dealsTableScoringMode || null);
+  return {
+    filters: f,
+    preset: preset ? { ...preset } : null,
+    mineOnly: mine,
+    scoringMode: mode || null,
+  };
+}
+
+function buildDealsReportSpecFromTable() {
+  const spec = buildDealsReportSpec(dealsTableColFilters, dealsTablePreset);
+  if (dealsTableScoringMode) spec.scoringMode = dealsTableScoringMode;
+  return spec;
+}
+
+function buildKanbanReportSpec(filters, mineOnly) {
+  const f = filters != null ? filters : (typeof kanbanFilters !== "undefined" ? kanbanFilters : {});
+  const mine = mineOnly != null ? !!mineOnly : (typeof kanbanMineOnly !== "undefined" ? !!kanbanMineOnly : false);
+  return { filters: { ...f }, mineOnly: mine };
+}
+
+function parsePageFilterParams(params) {
+  const filters = {};
+  params.forEach((val, key) => {
+    if (key === "preset" || key === "presetValue" || key === "mine" || key === "scoring") return;
+    if (key.endsWith("__from") || key.endsWith("__to")) {
+      filters[key] = val;
+      return;
+    }
+    filters[key] = val.includes("|") ? val.split("|") : val;
+  });
+  return filters;
+}
+
+function serializePageFilterParams(filters, extra = {}) {
   const params = new URLSearchParams();
-  const filters = spec?.filters || {};
-  Object.entries(filters).forEach(([key, val]) => {
+  Object.entries(filters || {}).forEach(([key, val]) => {
     if (val == null || val === "") return;
     if (Array.isArray(val)) {
       if (val.length) params.set(key, val.join("|"));
@@ -94,54 +211,161 @@ function serializeDealsReportSpec(spec) {
       params.set(key, String(val));
     }
   });
+  if (extra.mineOnly) params.set("mine", "1");
+  return params;
+}
+
+const WORKSPACE_HASH_IDS = new Set(["sales", "presale", "partners", "tech_partners"]);
+
+function splitWorkspaceFromHash(raw) {
+  raw = String(raw || "").replace(/^#/, "");
+  const slash = raw.indexOf("/");
+  if (slash <= 0) return { workspace: null, rest: raw };
+  const maybeWs = raw.slice(0, slash);
+  if (WORKSPACE_HASH_IDS.has(maybeWs)) {
+    return { workspace: maybeWs, rest: raw.slice(slash + 1) };
+  }
+  return { workspace: null, rest: raw };
+}
+
+function getWorkspaceHashPrefix(workspaceId) {
+  const ws = workspaceId
+    || (typeof getActiveWorkspaceId === "function" ? getActiveWorkspaceId() : null)
+    || "sales";
+  return `${ws}/`;
+}
+
+function withWorkspaceHash(pagePath, workspaceId) {
+  const path = String(pagePath || "").replace(/^\/+/, "");
+  return getWorkspaceHashPrefix(workspaceId) + path;
+}
+
+function serializeDealsReportSpec(spec, workspaceId) {
+  const params = serializePageFilterParams(spec?.filters || {}, { mineOnly: spec?.mineOnly });
   if (spec?.preset?.type) {
     params.set("preset", spec.preset.type);
     if (spec.preset.value) params.set("presetValue", spec.preset.value);
   }
+  if (spec?.scoringMode) params.set("scoring", spec.scoringMode);
   const qs = params.toString();
-  return qs ? `deals?${qs}` : "deals";
+  const path = qs ? `deals?${qs}` : "deals";
+  return withWorkspaceHash(path, workspaceId);
+}
+
+function serializeKanbanSpec(spec, workspaceId) {
+  const params = serializePageFilterParams(spec?.filters || {}, { mineOnly: spec?.mineOnly });
+  const qs = params.toString();
+  const path = qs ? `kanban?${qs}` : "kanban";
+  return withWorkspaceHash(path, workspaceId);
 }
 
 function normalizePageId(page) {
   const p = String(page || "").replace(/^\/+/, "").trim();
   if (!p || p === "/") return "panel";
   if (p.startsWith("deals")) return "deals";
+  if (p === "deal" || p.startsWith("deal/")) return "deal";
   if (PAGES && PAGES[p]) return p;
+  if (p === "activities") return "activities";
   return "panel";
 }
 
-function parseLocationHash() {
-  const raw = (location.hash || "").replace(/^#/, "");
-  if (!raw) return { page: "panel", spec: null };
+function parseHashRaw(raw) {
+  const { workspace, rest } = splitWorkspaceFromHash(raw);
+  raw = rest;
+  if (!raw) return { workspace, page: "panel", spec: null, kanbanSpec: null, dealId: null };
+  if (raw.startsWith("deal/")) {
+    return {
+      workspace,
+      page: "deal",
+      spec: null,
+      kanbanSpec: null,
+      dealId: decodeURIComponent(raw.slice(5)),
+    };
+  }
   const q = raw.indexOf("?");
-  let page = q >= 0 ? raw.slice(0, q) : raw;
+  const pagePart = q >= 0 ? raw.slice(0, q) : raw;
   const query = q >= 0 ? raw.slice(q + 1) : "";
-  page = normalizePageId(page);
-  if (page !== "deals" || !query) return { page, spec: null };
+  const page = normalizePageId(pagePart);
+  if (!query) {
+    return {
+      workspace,
+      page,
+      spec: page === "deals" ? null : undefined,
+      kanbanSpec: page === "kanban" ? null : undefined,
+      dealId: null,
+    };
+  }
   const params = new URLSearchParams(query);
-  const filters = {};
-  params.forEach((val, key) => {
-    if (key === "preset" || key === "presetValue") return;
-    if (key.endsWith("__from") || key.endsWith("__to")) {
-      filters[key] = val;
-      return;
-    }
-    filters[key] = val.includes("|") ? val.split("|") : val;
+  const mineOnly = params.get("mine") === "1";
+  if (page === "deals") {
+    const filters = parsePageFilterParams(params);
+    const presetType = params.get("preset");
+    const preset = presetType ? { type: presetType, value: params.get("presetValue") || undefined } : null;
+    const scoringMode = params.get("scoring") || null;
+    return {
+      workspace,
+      page,
+      spec: buildDealsReportSpec(filters, preset, mineOnly, scoringMode),
+      kanbanSpec: null,
+      dealId: null,
+    };
+  }
+  if (page === "kanban") {
+    const filters = parsePageFilterParams(params);
+    return {
+      workspace,
+      page,
+      spec: null,
+      kanbanSpec: buildKanbanReportSpec(filters, mineOnly),
+      dealId: null,
+    };
+  }
+  return { workspace, page, spec: null, kanbanSpec: null, dealId: null };
+}
+
+function parseLocationHash() {
+  return parseHashRaw((location.hash || "").replace(/^#/, ""));
+}
+
+function normalizeDealsReportSpec(spec) {
+  if (!spec) return null;
+  const filters = { ...(spec.filters || {}) };
+  Object.keys(filters).forEach(k => {
+    const v = filters[k];
+    if (Array.isArray(v)) filters[k] = v.filter(x => x != null && x !== "");
+    else if (v != null && v !== "") filters[k] = v;
+    else delete filters[k];
   });
-  const presetType = params.get("preset");
-  const preset = presetType
-    ? { type: presetType, value: params.get("presetValue") || undefined }
-    : null;
-  return { page, spec: buildDealsReportSpec(filters, preset) };
+  return {
+    filters,
+    preset: spec.preset?.type ? { ...spec.preset } : null,
+    mineOnly: !!spec.mineOnly,
+    scoringMode: spec.scoringMode || null,
+  };
 }
 
 function applyDealsReportSpec(spec) {
   dealsTableColFilters = {};
   dealsTablePreset = null;
   dealsTableSearch = "";
-  if (!spec) return;
+  dealsTableScoringMode = null;
+  dealsReportSpecFilters = null;
+  dealsTableActiveSpec = null;
+  if (typeof window !== "undefined") window.dealsTableActiveSpec = null;
+  if (typeof dealsMineOnly !== "undefined") dealsMineOnly = false;
+  const normalized = normalizeDealsReportSpec(spec);
+  if (!normalized) {
+    if (typeof dealsMineOnly !== "undefined") {
+      dealsMineOnly = localStorage.getItem("itmen_deals_mine") === "1";
+    }
+    return;
+  }
 
-  const filters = spec.filters || {};
+  const filters = { ...normalized.filters };
+  if (filters.q) {
+    dealsTableSearch = String(filters.q);
+    delete filters.q;
+  }
   Object.entries(filters).forEach(([key, val]) => {
     if (Array.isArray(val)) {
       if (val.length) dealsTableColFilters[key] = val;
@@ -149,12 +373,67 @@ function applyDealsReportSpec(spec) {
       dealsTableColFilters[key] = val;
     }
   });
-  dealsTablePreset = spec.preset?.type ? { ...spec.preset } : null;
+  dealsTablePreset = normalized.preset?.type ? { ...normalized.preset } : null;
+  if (Object.keys(filters).length) {
+    dealsReportSpecFilters = { ...filters };
+  }
+  dealsTableActiveSpec = {
+    filters: { ...filters },
+    preset: normalized.preset?.type ? { ...normalized.preset } : null,
+    mineOnly: !!normalized.mineOnly,
+    scoringMode: normalized.scoringMode || null,
+  };
+  if (typeof window !== "undefined") window.dealsTableActiveSpec = dealsTableActiveSpec;
+  if (normalized.mineOnly && typeof dealsMineOnly !== "undefined") dealsMineOnly = true;
+  if (normalized.scoringMode) dealsTableScoringMode = normalized.scoringMode;
+}
+
+function applyKanbanReportSpec(spec) {
+  if (typeof kanbanFilters === "undefined") return;
+  kanbanFilters = { q: "" };
+  if (typeof kanbanMineOnly !== "undefined") kanbanMineOnly = false;
+  if (!spec) {
+    if (typeof kanbanMineOnly !== "undefined") {
+      kanbanMineOnly = localStorage.getItem("itmen_kanban_mine") === "1";
+    }
+    return;
+  }
+  kanbanFilters = { ...(spec.filters || {}) };
+  if (spec.mineOnly && typeof kanbanMineOnly !== "undefined") kanbanMineOnly = true;
+}
+
+function captureListReturnHash(returnPage) {
+  const page = returnPage || (typeof activePage !== "undefined" ? activePage : "") || "deals";
+  if (page === "deals") return serializeDealsReportSpec(buildDealsReportSpec());
+  if (page === "kanban") return serializeKanbanSpec(buildKanbanReportSpec());
+  return (location.hash || "").replace(/^#/, "") || (typeof withWorkspaceHash === "function" ? withWorkspaceHash(page) : page);
+}
+
+function restoreNavigationFromHash(raw) {
+  const parsed = parseHashRaw(raw);
+  if (parsed.page === "deals") {
+    if (typeof navigate === "function") navigate("deals", parsed.spec);
+    return;
+  }
+  if (parsed.page === "kanban") {
+    if (typeof navigate === "function") navigate("kanban", parsed.kanbanSpec);
+    return;
+  }
+  if (typeof navigate === "function") navigate(parsed.page || "deals");
+}
+
+function updateKanbanReportHash(spec) {
+  const hash = serializeKanbanSpec(spec || buildKanbanReportSpec());
+  if (location.hash.replace(/^#/, "") !== hash) {
+    history.replaceState(null, "", "#" + hash);
+  }
 }
 
 function syncDealsReportFiltersToUI() {
   const gs = document.getElementById("deals-global-search");
   if (gs) gs.value = dealsTableSearch || "";
+  const mineCb = document.getElementById("deals-mine-only");
+  if (mineCb && typeof dealsMineOnly !== "undefined") mineCb.checked = !!dealsMineOnly;
 
   document.querySelectorAll("#deals-table .deals-col-filter").forEach(el => {
     const col = el.dataset.col;
@@ -180,14 +459,75 @@ function updateDealsReportHash(spec) {
   }
 }
 
+function filterDealsForReportSpec(deals, spec) {
+  if (!spec) return deals || [];
+  const scoringOpts = spec.scoringMode ? { mode: spec.scoringMode } : (
+    typeof getDealsScoringOpts === "function" ? getDealsScoringOpts() : null
+  );
+  let rows = (deals || []).map(d => (typeof enrichDeal === "function" ? enrichDeal(d, scoringOpts) : d));
+  if (spec.mineOnly) {
+    const mineFn = typeof isDealMineForCurrentUser === "function"
+      ? isDealMineForCurrentUser
+      : (typeof isDealOwnedByCurrentUser === "function" ? isDealOwnedByCurrentUser : null);
+    if (mineFn) rows = rows.filter(d => mineFn(d));
+  }
+  const cols = typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+  if (spec.filters && typeof dealMatchesAmoFilters === "function") {
+    rows = rows.filter(d => dealMatchesAmoFilters(d, spec.filters, cols, scoringOpts));
+  }
+  if (spec.preset?.type && typeof applyPresetFilter === "function") {
+    rows = applyPresetFilter(rows, spec.preset);
+  }
+  return rows;
+}
+
 function openDealsReport(spec) {
-  navigate("deals", spec);
+  const normalized = normalizeDealsReportSpec(spec);
+  applyDealsReportSpec(normalized);
+  navigate("deals", normalized);
 }
 
 function readMultiDataset(el, singleKey, multiKey) {
   if (el.dataset[multiKey]) return el.dataset[multiKey].split("|");
   if (el.dataset[singleKey]) return [el.dataset[singleKey]];
   return null;
+}
+
+function decodeDrillHref(raw) {
+  return String(raw || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function drillSpecFromHref(el) {
+  let href = String(el?.href || el?.getAttribute("href") || "").trim();
+  if (!href || href === "#") return null;
+  href = decodeDrillHref(href);
+  const hashIdx = href.indexOf("#");
+  if (hashIdx >= 0) href = href.slice(hashIdx + 1);
+  href = href.replace(/^#/, "");
+  if (!href.startsWith("deals") && !/^\w+\/deals/.test(href)) return null;
+  const parsed = parseHashRaw(href);
+  return parsed?.page === "deals" ? parsed.spec : null;
+}
+
+function pickDrillFilters(drillEl) {
+  const fromEl = drillSpecFromElement(drillEl)?.filters || {};
+  const fromHref = drillSpecFromHref(drillEl)?.filters || {};
+  const merged = { ...fromHref };
+  Object.keys(fromEl).forEach(k => {
+    const v = fromEl[k];
+    if (Array.isArray(v) ? v.length : v != null && v !== "") merged[k] = v;
+  });
+  Object.keys(fromHref).forEach(k => {
+    if (merged[k] == null || (Array.isArray(merged[k]) && !merged[k].length)) {
+      const v = fromHref[k];
+      if (Array.isArray(v) ? v.length : v != null && v !== "") merged[k] = v;
+    }
+  });
+  return merged;
 }
 
 function drillSpecFromElement(el) {
@@ -199,6 +539,8 @@ function drillSpecFromElement(el) {
     if (owner) spec.filters.owner = owner;
     const stage = readMultiDataset(el, "drillStage", "drillStages");
     if (stage) spec.filters.stage = stage;
+    const pStage = readMultiDataset(el, "drillPresaleStage", "drillPresaleStages");
+    if (pStage) spec.filters.presaleStage = pStage;
     const bp = readMultiDataset(el, "drillBudgetPeriod", "drillBudgetPeriods");
     if (bp) spec.filters.budgetPeriod = bp;
     const bs = readMultiDataset(el, "drillBudgetStatus", "drillBudgetStatuses");
@@ -215,6 +557,8 @@ function drillSpecFromElement(el) {
   if (owner) filters.owner = owner;
   const stage = readMultiDataset(el, "drillStage", "drillStages");
   if (stage) filters.stage = stage;
+  const pStage = readMultiDataset(el, "drillPresaleStage", "drillPresaleStages");
+  if (pStage) filters.presaleStage = pStage;
   const bp = readMultiDataset(el, "drillBudgetPeriod", "drillBudgetPeriods");
   if (bp) filters.budgetPeriod = bp;
   const bs = readMultiDataset(el, "drillBudgetStatus", "drillBudgetStatuses");
@@ -229,6 +573,11 @@ function drillSpecFromElement(el) {
 
 function getDealsReportFilterSummary() {
   const parts = [];
+  if (dealsTableScoringMode) {
+    const lbl = scoringModeLabel(dealsTableScoringMode);
+    if (lbl) parts.push(`Скоринг: ${lbl}`);
+  }
+  if (typeof dealsMineOnly !== "undefined" && dealsMineOnly) parts.push("Только мои");
   if (dealsTablePreset?.type) {
     const labels = {
       incomplete: "Неполные паспорта",
@@ -240,9 +589,24 @@ function getDealsReportFilterSummary() {
       attention: "Требуют внимания",
       hotNoBudget: "Горячие без бюджета",
       overdue: "Просроченные задачи",
+      overdue_tasks: "Просроченные задачи",
+      no_tasks: "Без задач",
       segment: `Сегмент: ${dealsTablePreset.value || ""}`,
       competitor: `Конкурент: ${dealsTablePreset.value || ""}`,
       hasCompetitors: "Сделки с конкурентами",
+      strongCommits: "Сильные коммиты",
+      confirmedBudget: "Подтверждённый бюджет",
+      pipelineDelta: "Изменения суммы пайплайна",
+      weightedDelta: "Изменения взвешенного прогноза",
+      scoreDelta: "Изменения балла",
+      dealCountDelta: "Изменения числа сделок",
+      presalePipeline: "Пре-сейл воронка",
+      presaleActive: "Активные пилоты",
+      presaleSuccess: "Успешные пре-сейл",
+      presaleFailed: "Провалы пре-сейл",
+      presaleOverdue: "Затянувшиеся пилоты",
+      presaleNoStage: "Без этапа пре-сейл",
+      dealIds: "Выбранные сделки",
     };
     parts.push(labels[dealsTablePreset.type] || dealsTablePreset.type);
   }
@@ -265,7 +629,7 @@ function getDealsReportFilterSummary() {
 }
 
 function copyDealsReportLink() {
-  const spec = buildDealsReportSpec(dealsTableColFilters, dealsTablePreset);
+  const spec = buildDealsReportSpecFromTable();
   const url = `${location.origin}${location.pathname}#${serializeDealsReportSpec(spec)}`;
   navigator.clipboard.writeText(url).then(() => {
     showToast("Ссылка на отчёт скопирована");
@@ -275,15 +639,26 @@ function copyDealsReportLink() {
 }
 
 function metricCardDrill(label, value, sub, drillAttrs = "") {
-  return `<div class="metric-card${drillAttrs ? " metric-card--drill" : ""}"${drillAttrs} title="${drillAttrs ? "Открыть список сделок" : ""}">
+  if (!drillAttrs) {
+    return `<div class="metric-card">
     <div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  }
+  return `<a class="metric-card metric-card--drill dash-drill-link" ${drillAttrs} onclick="return dashDrillLinkClick(event)" title="Открыть список сделок (колёсико или ПКМ — в новой вкладке)">
+    <div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</a>`;
 }
 
-function drillRowAttrs(spec) {
+function resolveDrillReportSpec(spec, widgetId) {
+  let full = spec;
+  if (widgetId && typeof withWidgetFilters === "function") full = withWidgetFilters(widgetId, full);
+  return full;
+}
+
+function drillRowDataAttrs(spec, widgetId) {
   const el = document.createElement("div");
-  if (spec.preset?.type) el.dataset.drillPreset = spec.preset.type;
-  if (spec.preset?.value) el.dataset.drillPresetValue = spec.preset.value;
-  const f = spec.filters || {};
+  const fullSpec = resolveDrillReportSpec(spec, widgetId);
+  if (fullSpec.preset?.type) el.dataset.drillPreset = fullSpec.preset.type;
+  if (fullSpec.preset?.value) el.dataset.drillPresetValue = fullSpec.preset.value;
+  const f = fullSpec.filters || {};
   const setMulti = (attr, val) => {
     if (!val) return;
     const arr = Array.isArray(val) ? val : [val];
@@ -293,6 +668,7 @@ function drillRowAttrs(spec) {
   setMulti("drillCategory", f.category);
   setMulti("drillOwner", f.owner);
   setMulti("drillStage", f.stage);
+  setMulti("drillPresaleStage", f.presaleStage);
   setMulti("drillBudgetPeriod", f.budgetPeriod);
   setMulti("drillBudgetStatus", f.budgetStatus);
   setMulti("drillCommitStatus", f.commitStatus);
@@ -301,3 +677,77 @@ function drillRowAttrs(spec) {
   if (f.customer) el.dataset.drillCustomer = f.customer;
   return [...el.attributes].map(a => `${a.name}="${escapeHtml(a.value)}"`).join(" ");
 }
+
+function escapeDrillHrefAttr(hash) {
+  return String(hash || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;");
+}
+
+function drillLinkAttrs(spec, widgetId) {
+  const fullSpec = resolveDrillReportSpec(spec, widgetId);
+  const hash = serializeDealsReportSpec(fullSpec);
+  const href = `#${escapeDrillHrefAttr(hash)}`;
+  const dataAttrs = drillRowDataAttrs(fullSpec, widgetId);
+  return `href="${href}"${dataAttrs ? ` ${dataAttrs}` : ""}`;
+}
+
+function drillRowAttrs(spec, widgetId) {
+  return drillRowDataAttrs(spec, widgetId);
+}
+
+function openDashDrillInNewTab(drillEl) {
+  if (!drillEl || typeof serializeDealsReportSpec !== "function") return;
+  const spec = typeof buildDashDrillSpec === "function"
+    ? buildDashDrillSpec(drillEl)
+    : (typeof withDashboardFilters === "function" && typeof drillSpecFromElement === "function"
+      ? withDashboardFilters(drillSpecFromElement(drillEl))
+      : buildDealsReportSpec());
+  const url = `${location.origin}${location.pathname}#${serializeDealsReportSpec(spec)}`;
+  window.open(url, "_blank", "noopener");
+}
+
+function dashDrillLinkClick(ev) {
+  if (!ev) return true;
+  if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return true;
+  ev.preventDefault();
+  const el = ev.currentTarget;
+  const presaleDash = el.closest("[data-presale-dash]");
+  if (presaleDash && typeof openPresaleDealsReportFromDrill === "function") {
+    openPresaleDealsReportFromDrill(el);
+  } else if (typeof openDealsReportFromDashDrill === "function") {
+    openDealsReportFromDashDrill(el);
+  } else if (typeof openDealsReport === "function" && typeof buildDashDrillSpec === "function") {
+    let spec = buildDashDrillSpec(el);
+    if (spec?.preset?.type === "dealIds") {
+      spec = buildDealsReportSpec(
+        spec.filters || {},
+        null,
+        spec.mineOnly,
+        spec.scoringMode,
+        { skipTableSearch: true },
+      );
+    }
+    openDealsReport(spec);
+  } else if (typeof openDealsReport === "function" && typeof drillSpecFromElement === "function" && typeof withDashboardFilters === "function") {
+    openDealsReport(withDashboardFilters(drillSpecFromElement(el)));
+  }
+  return false;
+}
+
+window.splitWorkspaceFromHash = splitWorkspaceFromHash;
+window.withWorkspaceHash = withWorkspaceHash;
+window.getWorkspaceHashPrefix = getWorkspaceHashPrefix;
+window.drillSpecFromHref = drillSpecFromHref;
+window.pickDrillFilters = pickDrillFilters;
+window.filterDealsForReportSpec = filterDealsForReportSpec;
+window.applyPresetFilter = applyPresetFilter;
+window.applyDealsReportSpec = applyDealsReportSpec;
+window.normalizeDealsReportSpec = normalizeDealsReportSpec;
+window.getDealsScoringOpts = getDealsScoringOpts;
+window.buildDealsReportSpecFromTable = buildDealsReportSpecFromTable;
+window.dashDrillLinkClick = dashDrillLinkClick;
+window.openDashDrillInNewTab = openDashDrillInNewTab;
+window.drillLinkAttrs = drillLinkAttrs;
+window.drillRowAttrs = drillRowAttrs;
+window.metricCardDrill = metricCardDrill;

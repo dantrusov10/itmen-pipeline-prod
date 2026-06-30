@@ -47,6 +47,9 @@ async function updateProfile(userId, patch) {
 async function uploadAvatar(userId, file) {
   const row = await findOne("user_profiles", `user_id="${userId}"`);
   if (!row) throw new Error("Профиль не найден");
+  if (row.avatar) {
+    await updateRecord("user_profiles", row.id, { avatar: null });
+  }
   const updated = await uploadRecord("user_profiles", {}, {
     file: file.buffer,
     fileName: file.originalname || "avatar.png",
@@ -174,15 +177,81 @@ async function deleteUser(userId) {
   return { ok: true };
 }
 
+async function listAdminOwners() {
+  const users = await listAll("pipeline_users", { filter: 'role="admin"' });
+  const names = new Set();
+  users.forEach(u => {
+    const mn = String(u.manager_name || "").trim();
+    const dn = String(u.display_name || "").trim();
+    if (mn) names.add(mn);
+    if (dn) names.add(dn);
+  });
+  return [...names].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+async function listOwnerCandidates() {
+  const users = await listAll("pipeline_users", { sort: "email" });
+  const managerRows = await listAll("managers", { sort: "name" });
+  const ownerListRows = await listAll("list_items", { filter: 'list_key="owners"' });
+  const byKey = new Map();
+  const add = n => {
+    const display = String(n || "").trim().replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+    if (!display) return;
+    const key = normalizeOwnerKey(display);
+    if (!byKey.has(key)) byKey.set(key, display);
+  };
+  users.forEach(u => {
+    const mn = String(u.manager_name || "").trim();
+    const dn = String(u.display_name || "").trim();
+    if (mn) add(mn);
+    else if (dn) add(dn);
+    else if (u.email) add(String(u.email).split("@")[0]);
+  });
+  managerRows.forEach(m => add(m.name));
+  ownerListRows.forEach(r => add(r.value));
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function normalizeOwnerKey(name) {
+  return String(name || "")
+    .replace(/\u00a0/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFC")
+    .toLowerCase();
+}
+
+function resolveOwnerName(name, candidates) {
+  const key = normalizeOwnerKey(name);
+  if (!key) return "";
+  const list = candidates || [];
+  const hit = list.find(c => normalizeOwnerKey(c) === key);
+  return hit || String(name || "").trim().replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+}
+
 async function listAvatarsByManager() {
   const users = await listAll("pipeline_users");
   const profiles = await listAll("user_profiles");
+  const profileByUser = Object.fromEntries(profiles.map(p => [p.user_id, p]));
   const map = {};
+  const put = (name, url) => {
+    const display = String(name || "").trim().replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+    if (!display || !url) return;
+    map[display] = url;
+    const key = normalizeOwnerKey(display);
+    if (key) map[key] = url;
+  };
   users.forEach(u => {
-    const name = u.manager_name || u.display_name || "";
-    if (!name) return;
-    const prof = profiles.find(p => p.user_id === u.id);
-    map[name] = prof?.avatar ? `/api/profile/avatar/${u.id}` : "";
+    const prof = profileByUser[u.id];
+    if (!prof?.avatar) return;
+    const url = `/api/profile/avatar/${u.id}`;
+    put(u.manager_name, url);
+    put(u.display_name, url);
+    if (u.manager_name && u.display_name && normalizeOwnerKey(u.manager_name) !== normalizeOwnerKey(u.display_name)) {
+      put(u.display_name, url);
+    }
+    const emailLocal = String(u.email || "").split("@")[0];
+    if (emailLocal) put(emailLocal, url);
   });
   return map;
 }
@@ -198,4 +267,8 @@ module.exports = {
   updateUser,
   deleteUser,
   listAvatarsByManager,
+  listAdminOwners,
+  listOwnerCandidates,
+  normalizeOwnerKey,
+  resolveOwnerName,
 };

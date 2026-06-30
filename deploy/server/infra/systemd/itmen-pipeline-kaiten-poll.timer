@@ -1,0 +1,11 @@
+[Unit]
+Description=ITMen Pipeline Kaiten inbound poll (every 1 hour)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

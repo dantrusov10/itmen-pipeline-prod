@@ -1,7 +1,62 @@
 /* Профиль + админка пользователей */
+let profileAvatarPendingFile = null;
+let profileAvatarPreviewUrl = "";
+
+function cleanupProfileAvatarPreview() {
+  if (profileAvatarPreviewUrl) {
+    URL.revokeObjectURL(profileAvatarPreviewUrl);
+    profileAvatarPreviewUrl = "";
+  }
+  profileAvatarPendingFile = null;
+}
+
+function renderProfileAvatarBlock(profile) {
+  const src = profileAvatarPreviewUrl || profile.avatarUrl || "";
+  return `
+    <div class="profile-avatar-edit-wrap" id="prof-avatar-wrap">
+      <div class="profile-avatar-preview" id="prof-avatar-preview">
+        ${src
+          ? `<img src="${escapeHtml(src)}" class="profile-avatar" alt="">`
+          : `<span class="owner-avatar owner-avatar-ph profile-avatar-ph"></span>`}
+        <button type="button" class="profile-avatar-edit-btn" id="prof-avatar-edit" title="Изменить аватар" aria-label="Изменить аватар">✏️</button>
+      </div>
+      <input type="file" id="prof-avatar-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+      <p class="muted profile-avatar-hint">JPG/PNG, до 5 МБ. При замене старый аватар удаляется.</p>
+    </div>`;
+}
+
+function bindProfileAvatarUi() {
+  const input = document.getElementById("prof-avatar-input");
+  const editBtn = document.getElementById("prof-avatar-edit");
+  const preview = document.getElementById("prof-avatar-preview");
+  editBtn?.addEventListener("click", () => input?.click());
+  preview?.addEventListener("click", e => {
+    if (e.target.closest(".profile-avatar-edit-btn")) return;
+    input?.click();
+  });
+  input?.addEventListener("change", () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) {
+      alert("Файл больше 5 МБ");
+      input.value = "";
+      return;
+    }
+    cleanupProfileAvatarPreview();
+    profileAvatarPendingFile = f;
+    profileAvatarPreviewUrl = URL.createObjectURL(f);
+    const wrap = document.getElementById("prof-avatar-wrap");
+    if (wrap) {
+      wrap.outerHTML = renderProfileAvatarBlock({ avatarUrl: profileAvatarPreviewUrl });
+      bindProfileAvatarUi();
+    }
+  });
+}
+
 async function renderProfile() {
   const el = document.getElementById("page-profile");
   if (!el) return;
+  cleanupProfileAvatarPreview();
   const admin = isAdmin();
   el.innerHTML = `<div class="profile-grid">
     <div class="card"><div class="card-body" id="profile-self"><p class="muted">Загрузка…</p></div></div>
@@ -16,11 +71,25 @@ async function renderProfileSelf() {
   if (!box) return;
   try {
     const { profile } = await apiGetProfile();
+    let avatarUrl = profile.avatarUrl || "";
+    if (avatarUrl && typeof apiFetchAvatarBlobUrl === "function") {
+      try {
+        avatarUrl = await apiFetchAvatarBlobUrl(avatarUrl) || avatarUrl;
+      } catch (_) { /* keep path fallback */ }
+    }
+    const profileView = { ...profile, avatarUrl };
     const u = window.ITMEN_AUTH?.user || {};
+    const roleLabel = (() => {
+      const roles = typeof parseUserRoles === "function" ? parseUserRoles(u) : [u.role];
+      if (roles.includes("admin")) return "админ";
+      if (roles.includes("manager") && roles.includes("presale")) return "менеджер+пре-сейл";
+      if (roles.includes("presale")) return "пре-сейл";
+      return "менеджер";
+    })();
     box.innerHTML = `
       <h3>Личный кабинет</h3>
-      <p class="muted">${escapeHtml(u.displayName || u.email)} · ${u.role === "admin" ? "админ" : "менеджер"}</p>
-      ${profile.avatarUrl ? `<div class="profile-avatar-wrap"><img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt=""></div>` : `<div class="profile-avatar-wrap"><span class="owner-avatar owner-avatar-ph" style="width:72px;height:72px"></span></div>`}
+      <p class="muted">${escapeHtml(u.displayName || u.email)} · ${roleLabel}</p>
+      ${renderProfileAvatarBlock(profileView)}
       <div class="form-grid" style="margin-top:1rem">
         <div><label>Телефон</label><input id="prof-phone" value="${escapeHtml(profile.phone)}"></div>
       </div>
@@ -29,9 +98,6 @@ async function renderProfileSelf() {
         <label><input type="checkbox" id="prof-notify-task" ${profile.notifyTaskDue ? "checked" : ""}> Просроченные задачи</label>
         <label><input type="checkbox" id="prof-notify-deal" ${profile.notifyDealAssigned ? "checked" : ""}> Передача сделок</label>
         <label><input type="checkbox" id="prof-notify-comment" ${profile.notifyComments ? "checked" : ""}> Комментарии</label>
-      </div>
-      <div style="margin-top:1rem">
-        <label>Аватар (JPG/PNG, до 5 МБ)</label><input type="file" id="prof-avatar" accept="image/*">
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="prof-save" style="margin-top:1rem">Сохранить настройки</button>
       <hr style="margin:1.5rem 0">
@@ -49,6 +115,7 @@ async function renderProfileSelf() {
         <div><label>Новый</label><input type="password" id="pwd-new"></div>
       </div>
       <button type="button" class="btn btn-sm" id="pwd-save" style="margin-top:.5rem">Сменить пароль</button>`;
+    bindProfileAvatarUi();
     document.getElementById("prof-save").onclick = async () => {
       await apiUpdateProfile({
         phone: document.getElementById("prof-phone").value,
@@ -57,8 +124,11 @@ async function renderProfileSelf() {
         notifyDealAssigned: document.getElementById("prof-notify-deal").checked,
         notifyComments: document.getElementById("prof-notify-comment").checked,
       });
-      const f = document.getElementById("prof-avatar")?.files?.[0];
-      if (f) await apiUploadAvatar(f);
+      if (profileAvatarPendingFile) {
+        await apiUploadAvatar(profileAvatarPendingFile);
+        cleanupProfileAvatarPreview();
+        if (typeof invalidateAvatarBlobCache === "function") invalidateAvatarBlobCache();
+      }
       showToast("Профиль сохранён");
       if (typeof loadManagerAvatars === "function") await loadManagerAvatars();
       renderProfileSelf();
@@ -120,8 +190,10 @@ async function renderProfileAdmin() {
         <input id="bulk-value" placeholder="Значение">
         <button type="button" class="btn btn-sm" id="bulk-run">Применить</button>
       </div>`;
-    document.getElementById("admin-add-user").onclick = () => adminUserForm();
-    box.querySelectorAll(".admin-edit").forEach(b => b.onclick = () => adminUserForm(items.find(x => x.id === b.dataset.id)));
+    document.getElementById("admin-add-user").onclick = () => openAdminUserModal(null);
+    box.querySelectorAll(".admin-edit").forEach(b => b.onclick = () => {
+      openAdminUserModal(items.find(x => x.id === b.dataset.id));
+    });
     box.querySelectorAll(".admin-del").forEach(b => b.onclick = async () => {
       if (!confirm("Удалить пользователя?")) return;
       await apiAdminDeleteUser(b.dataset.id);
@@ -141,21 +213,79 @@ async function renderProfileAdmin() {
   }
 }
 
-function adminUserForm(user) {
-  const email = prompt("Email", user?.email || "");
-  if (!email) return;
-  const password = user ? null : prompt("Пароль (мин. 8 символов)");
-  if (!user && !password) return;
-  const displayName = prompt("Отображаемое имя", user?.displayName || "");
-  const managerName = prompt("Имя менеджера (как в сделках)", user?.managerName || "");
-  const role = prompt("Роль: admin или manager", user?.role || "manager");
-  (async () => {
-    await apiAdminSaveUser({
-      email, password, displayName, managerName, role,
-    }, user?.id);
-    showToast("Пользователь сохранён");
-    renderProfileAdmin();
-  })().catch(e => alert(e.message));
+function closeAdminUserModal() {
+  document.getElementById("admin-user-modal")?.classList.remove("open");
+}
+
+function openAdminUserModal(user) {
+  let overlay = document.getElementById("admin-user-modal");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "admin-user-modal";
+    overlay.className = "modal-overlay";
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) closeAdminUserModal();
+    });
+  }
+  const isEdit = Boolean(user?.id);
+  overlay.innerHTML = `
+    <div class="modal admin-user-modal" style="max-width:520px">
+      <div class="modal-header modal-header-sticky">
+        <h3>${isEdit ? "Редактировать пользователя" : "Новый пользователь"}</h3>
+        <button type="button" class="btn btn-sm" id="admin-user-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid form-grid-2">
+          <div class="span-2"><label>Email (логин)</label>
+            <input type="email" id="adm-email" value="${escapeHtml(user?.email || "")}" autocomplete="off"></div>
+          <div class="span-2"><label>Пароль${isEdit ? " (оставьте пустым, чтобы не менять)" : ""}</label>
+            <input type="password" id="adm-password" autocomplete="new-password"></div>
+          <div><label>Отображаемое имя</label>
+            <input type="text" id="adm-display" value="${escapeHtml(user?.displayName || "")}"></div>
+          <div><label>Имя менеджера (как в сделках)</label>
+            <input type="text" id="adm-manager" value="${escapeHtml(user?.managerName || "")}"></div>
+          <div class="span-2"><label>Роль</label>
+            <select id="adm-role">
+              <option value="manager">Менеджер</option>
+              <option value="presale">Пре-сейл</option>
+              <option value="manager_presale">Менеджер + пре-сейл</option>
+              <option value="admin">Администратор</option>
+            </select></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:.75rem 1rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:.5rem">
+        <button type="button" class="btn btn-sm" id="admin-user-cancel">Отмена</button>
+        <button type="button" class="btn btn-primary btn-sm" id="admin-user-save">Сохранить</button>
+      </div>
+    </div>`;
+  const roleSel = overlay.querySelector("#adm-role");
+  if (roleSel && user?.role) roleSel.value = user.role;
+
+  overlay.querySelector("#admin-user-close")?.addEventListener("click", closeAdminUserModal);
+  overlay.querySelector("#admin-user-cancel")?.addEventListener("click", closeAdminUserModal);
+  overlay.querySelector("#admin-user-save")?.addEventListener("click", async () => {
+    const email = overlay.querySelector("#adm-email")?.value?.trim();
+    const password = overlay.querySelector("#adm-password")?.value || "";
+    const displayName = overlay.querySelector("#adm-display")?.value?.trim();
+    const managerName = overlay.querySelector("#adm-manager")?.value?.trim();
+    const role = overlay.querySelector("#adm-role")?.value || "manager";
+    if (!email) return alert("Укажите email");
+    if (!isEdit && password.length < 8) return alert("Пароль минимум 8 символов");
+    if (!displayName) return alert("Укажите отображаемое имя");
+    if (!managerName) return alert("Укажите имя менеджера");
+    try {
+      const body = { email, displayName, managerName, role };
+      if (password) body.password = password;
+      await apiAdminSaveUser(body, user?.id);
+      closeAdminUserModal();
+      showToast("Пользователь сохранён");
+      renderProfileAdmin();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  });
+  overlay.classList.add("open");
 }
 
 window.renderProfile = renderProfile;

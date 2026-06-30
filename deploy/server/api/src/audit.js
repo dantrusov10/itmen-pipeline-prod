@@ -1,37 +1,7 @@
 "use strict";
 
 const { createRecord } = require("./pb-client");
-
-const FIELD_LABELS = {
-  customer: "Клиент",
-  industry: "Отрасль",
-  owner: "Владелец",
-  stage: "Стадия",
-  amount: "Ожид. сумма",
-  expectedBudget: "Ожид. бюджет",
-  partner: "Партнёр",
-  partnerDiscount: "Скидка партнёру, %",
-  clientDiscount: "Скидка клиенту, %",
-  manualProb: "Вероятность",
-  taskDue: "Срок задачи",
-  budgetPeriod: "Срок бюджета",
-  budgetStatus: "Статус бюджета",
-  budgetPlannedMonth: "Месяц согласования",
-  budgetPlannedYear: "Год согласования",
-  commitStatus: "Статус коммита",
-  pains: "Ключевые боли",
-  riskTypes: "Риски",
-  riskComment: "Комментарий к риску",
-  scores: "Скоринг",
-  seekingSegments: "Что ищут",
-  seekingOtherLabel: "Другое (что ищут)",
-  productRequirementsPct: "% требований проекта",
-  pilotRequirementsPct: "% требований пилота",
-  asIsStack: "Что есть сейчас",
-  changePains: "Почему меняют",
-  competitorEntries: "Конкуренты",
-  projectTasks: "Задачи проекта",
-};
+const { FIELD_LABELS } = require("./audit-labels");
 
 const SCALAR_FIELDS = [
   "customer", "industry", "owner", "stage", "amount", "expectedBudget",
@@ -49,8 +19,27 @@ function normalizeRiskTypes(deal) {
   return [];
 }
 
+function normalizeManualProb(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n <= 1) return Math.min(1, n);
+  if (n <= 100) return Math.min(1, n / 100);
+  let x = n;
+  while (x > 100) x /= 100;
+  return Math.min(1, x / 100);
+}
+
 function formatAuditValue(key, val) {
   if (val === null || val === undefined || val === "") return "";
+  if (key === "manualProb") {
+    const p = normalizeManualProb(val);
+    return p > 0 ? `${Math.round(p * 100)}%` : "";
+  }
+  if (key === "amount" || key === "expectedBudget") {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return "";
+    return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
+  }
   if (key === "riskTypes" || key === "seekingSegments") {
     return (Array.isArray(val) ? val : []).join(", ");
   }
@@ -66,11 +55,37 @@ function truncate(s) {
   return str.length <= AUDIT_VALUE_MAX ? str : `${str.slice(0, AUDIT_VALUE_MAX)}…`;
 }
 
+const SCORE_KEYS = [
+  "loyalty", "commit", "budget", "fit", "timing", "competitive", "access", "technical", "commercial",
+];
+
+function normalizeAuditScalar(key, val) {
+  if (key === "budgetStatus") {
+    const s = String(val || "").trim();
+    return s || "Неизвестно";
+  }
+  if (key === "budgetPeriod") {
+    const s = String(val || "").trim();
+    return s || "Не определён";
+  }
+  if (key === "commitStatus") {
+    const s = String(val || "").trim();
+    return s || "none";
+  }
+  return val;
+}
+
+function normalizeScoresJson(scores) {
+  const out = {};
+  for (const k of SCORE_KEYS) out[k] = Number(scores?.[k]) || 0;
+  return JSON.stringify(out);
+}
+
 function diffDeal(oldD, newD) {
   const changes = [];
   for (const key of SCALAR_FIELDS) {
-    const o = formatAuditValue(key, oldD?.[key]);
-    const n = formatAuditValue(key, newD?.[key]);
+    const o = formatAuditValue(key, normalizeAuditScalar(key, oldD?.[key]));
+    const n = formatAuditValue(key, normalizeAuditScalar(key, newD?.[key]));
     if (o !== n) changes.push({ field: key, label: FIELD_LABELS[key] || key, old: o, new: n });
   }
 
@@ -80,8 +95,8 @@ function diffDeal(oldD, newD) {
     changes.push({ field: "riskTypes", label: FIELD_LABELS.riskTypes, old: oRisks, new: nRisks });
   }
 
-  const oScores = JSON.stringify(oldD?.scores || {});
-  const nScores = JSON.stringify(newD?.scores || {});
+  const oScores = normalizeScoresJson(oldD?.scores);
+  const nScores = normalizeScoresJson(newD?.scores);
   if (oScores !== nScores) {
     changes.push({ field: "scores", label: FIELD_LABELS.scores, old: oScores, new: nScores });
   }

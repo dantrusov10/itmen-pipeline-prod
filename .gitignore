@@ -9,3 +9,6 @@ amocrm_preview.json
 *.log
 Thumbs.db
 tools/env_urls.json
+deploy/server/scripts/amo-tokens.json
+amo-tokens.json
+**/amo-tokens.json

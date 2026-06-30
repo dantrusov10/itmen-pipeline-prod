@@ -27,13 +27,34 @@ function isLiteDeal(d) {
   return !!(d && d._lite);
 }
 
+function techFieldHasContent(field, val) {
+  if (val == null) return false;
+  if (field === "projectTasks") return Array.isArray(val) && val.some(t => String(t || "").trim());
+  if (field === "competitorEntries" && typeof val === "object") {
+    return Object.values(val).some(arr => (arr || []).some(e => e && (e.vendor || e.product)));
+  }
+  if (field === "asIsStack" && typeof val === "object") {
+    return Object.values(val).some(v => v && (v.vendor || v.product || v.comment));
+  }
+  if (field === "changePains" && typeof val === "object") {
+    return Object.values(val).some(v => v && String(v).trim());
+  }
+  return false;
+}
+
 function needsFullDeal(d) {
   if (!d) return false;
   if (d._lite) return true;
   if (d.hasPains && !String(d.pains || "").trim()) return true;
   const tr = d.techResearch || {};
   const hasSeg = (tr.seekingSegments || []).length > 0;
-  const hasHeavy = tr.competitorEntries || tr.changePains || tr.asIsStack || (tr.projectTasks || []).length;
+  if (!hasSeg) return false;
+  // Lite-срез не включает эти поля — если ключей нет, данные могли остаться только на сервере
+  if (!("projectTasks" in tr) || !("asIsStack" in tr) || !("changePains" in tr)) return true;
+  const hasHeavy = techFieldHasContent("competitorEntries", tr.competitorEntries)
+    || techFieldHasContent("changePains", tr.changePains)
+    || techFieldHasContent("asIsStack", tr.asIsStack)
+    || techFieldHasContent("projectTasks", tr.projectTasks);
   if (hasSeg && !hasHeavy) return true;
   return false;
 }

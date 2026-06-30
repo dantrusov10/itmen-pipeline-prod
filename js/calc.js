@@ -1,10 +1,28 @@
 /* Расчётный движок — пайплайн, скоринг, подсказки модели */
 const SCORE_WEIGHTS = {
+  loyalty: 0.08, commit: 0.08, budget: 0.144, fit: 0.144, timing: 0.112,
+  competitive: 0.08, access: 0.064, technical: 0.048, commercial: 0.048,
+  manualProb: 0.20,
+};
+
+const SCORE_WEIGHTS_NO_PROB = {
   loyalty: 0.10, commit: 0.10, budget: 0.18, fit: 0.18, timing: 0.14,
   competitive: 0.10, access: 0.08, technical: 0.06, commercial: 0.06,
 };
 
+const SCORE_WEIGHTS_PROB_ONLY = { manualProb: 1.0 };
+
 const MANUAL_SCORE_KEYS = new Set(window.ITMEN_CONFIG?.manualScoreKeys || ["loyalty"]);
+
+let dealNextTaskDue = {};
+function setDealNextTaskDue(map) {
+  dealNextTaskDue = map || {};
+}
+function getDealTaskDue(dealId) {
+  return dealNextTaskDue[dealId] || "";
+}
+window.setDealNextTaskDue = setDealNextTaskDue;
+window.getDealTaskDue = getDealTaskDue;
 
 function commitScoreFromStatus(commitId) {
   const map = {
@@ -78,6 +96,40 @@ function riskLabels(types) {
   return list.map(id => riskLabel(id)).filter(Boolean);
 }
 
+function normalizeManualProb(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n <= 1) return Math.min(1, n);
+  if (n <= 100) return Math.min(1, n / 100);
+  let x = n;
+  while (x > 100) x /= 100;
+  return Math.min(1, x / 100);
+}
+
+function manualProbDisplayPct(v) {
+  const p = normalizeManualProb(v);
+  return p > 0 ? Math.round(p * 100) : null;
+}
+
+function parseManualProbInput(v) {
+  const raw = String(v ?? "").replace(/%/g, "").replace(",", ".").trim();
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n <= 1) return Math.min(1, n);
+  return Math.min(1, n / 100);
+}
+
+function formatMoneyInput(n) {
+  if (n == null || n === "" || isNaN(n)) return "";
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Number(n)).replace(/\u00A0/g, " ");
+}
+
+function parseMoneyInput(v) {
+  if (v == null || v === "") return 0;
+  return +(String(v).replace(/\s/g, "").replace(",", ".")) || 0;
+}
+
 function migrateDeal(deal) {
   const d = { ...deal };
   if (d.deadline && !d.taskDue) d.taskDue = d.deadline;
@@ -104,7 +156,11 @@ function migrateDeal(deal) {
   if (!d.partner) d.partner = "Нет партнёра";
   if (d.partnerDiscount == null) d.partnerDiscount = 0;
   if (d.clientDiscount == null) d.clientDiscount = 0;
+  d.manualProb = normalizeManualProb(d.manualProb);
   if (!d.updatedAt && d.lastUpdate) d.updatedAt = `${d.lastUpdate}T12:00:00.000Z`;
+  if (typeof normalizePresaleBlock === "function") {
+    d.presale = normalizePresaleBlock(d.presale, d);
+  } else if (!d.presale) d.presale = {};
   delete d.deadline;
   delete d.revenuePeriod;
   delete d.evidenceLink;
@@ -134,11 +190,71 @@ function daysUntil(dateStr) {
   return Math.round((d - today) / 86400000);
 }
 
-function calcDealScore(scores) {
-  const vals = Object.values(scores || {});
+function getScoreWeightsMap() {
+  if (typeof getMergedScoringItems === "function") {
+    try {
+      const items = getMergedScoringItems(typeof state !== "undefined" ? state?.scoring : null);
+      if (items?.length) {
+        const map = {};
+        items.forEach(i => { if (i.key) map[i.key] = i.weight; });
+        if (Object.keys(map).length) return map;
+      }
+    } catch (_) { /* fallback */ }
+  }
+  return SCORE_WEIGHTS;
+}
+
+function normalizeScoringOpts(opts) {
+  if (!opts) return { mode: "with_prob" };
+  if (opts.mode === "no_prob" || opts.mode === "prob_only" || opts.mode === "with_prob") return { mode: opts.mode };
+  if (opts.probOnly) return { mode: "prob_only" };
+  if (opts.useManualProb === false) return { mode: "no_prob" };
+  return { mode: "with_prob" };
+}
+
+function getScoreWeightsForMode(mode) {
+  if (mode === "prob_only") return { ...SCORE_WEIGHTS_PROB_ONLY };
+  if (mode === "no_prob") {
+    const base = getScoreWeightsMap();
+    const filtered = {};
+    let sum = 0;
+    for (const [k, w] of Object.entries(base)) {
+      if (k === "manualProb") continue;
+      filtered[k] = w;
+      sum += w;
+    }
+    if (sum <= 0) return { ...SCORE_WEIGHTS_NO_PROB };
+    const scaled = {};
+    for (const [k, w] of Object.entries(filtered)) scaled[k] = w / sum;
+    return scaled;
+  }
+  return getScoreWeightsMap();
+}
+
+function manualProbToScore(prob) {
+  const p = normalizeManualProb(prob);
+  if (p <= 0) return 0;
+  return Math.round(p * 5);
+}
+
+function calcDealScore(scores, manualProb, scoringOpts) {
+  const { mode } = normalizeScoringOpts(scoringOpts);
+  const weights = getScoreWeightsForMode(mode);
+  const s = { ...(scores || {}) };
+  const mp = manualProbToScore(manualProb);
+
+  if (mode === "prob_only") {
+    if (mp <= 0) return null;
+    return Math.round((mp / 5) * 100);
+  }
+
+  if (mode === "with_prob" && mp > 0) s.manualProb = mp;
+
+  const keys = Object.keys(weights);
+  const vals = keys.map(k => s[k] || 0);
   if (!vals.some(v => v > 0)) return null;
   let sum = 0;
-  for (const [k, w] of Object.entries(SCORE_WEIGHTS)) sum += (scores[k] || 0) * w;
+  for (const [k, w] of Object.entries(weights)) sum += (s[k] || 0) * w;
   return Math.round((sum / 5) * 100);
 }
 
@@ -149,7 +265,16 @@ function calcComputedProb(score, commitStatus, budgetStatus) {
   return Math.min(1, Math.max(0, Math.round(p * 100) / 100));
 }
 
-function calcCategory(score, commitStatus, budgetStatus) {
+function calcCategory(score, commitStatus, budgetStatus, scoringOpts) {
+  const { mode } = normalizeScoringOpts(scoringOpts);
+  if (mode === "prob_only") {
+    if (score == null) return "";
+    if (score >= 80) return "Горячая";
+    if (score >= 60) return "Тёплая";
+    if (score >= 40) return "Наблюдение";
+    return "Отказ";
+  }
+
   const commit = normalizeCommitStatus(commitStatus);
   if (score == null && commit !== "contract") return "";
   if (commit === "contract") return "Горячая";
@@ -190,9 +315,26 @@ function pctToTechnicalScore(pct) {
   return 0;
 }
 
-function avgRequirementPct(tr) {
-  const vals = [tr.productRequirementsPct, tr.pilotRequirementsPct]
-    .filter(v => v != null && v !== "" && !isNaN(v)).map(Number);
+function requirementPctValue(deal, tr, kind) {
+  const isPilot = kind === "pilot";
+  const dealPct = isPilot ? deal?.pilotFeasibilityPct : deal?.productFeasibilityPct;
+  const trPct = isPilot
+    ? (deal?.techResearch?.pilotRequirementsPct ?? tr?.pilotRequirementsPct)
+    : (deal?.techResearch?.productRequirementsPct ?? tr?.productRequirementsPct);
+  const count = isPilot ? deal?.pilotReqCount : deal?.productReqCount;
+  const pick = (v) => {
+    if (v == null || v === "" || isNaN(v)) return null;
+    const n = Number(v);
+    if (n === 0 && count > 0) return null;
+    return n;
+  };
+  return pick(dealPct) ?? pick(trPct);
+}
+
+function avgRequirementPct(tr, deal) {
+  const pilot = requirementPctValue(deal, tr, "pilot");
+  const product = requirementPctValue(deal, tr, "product");
+  const vals = [pilot, product].filter(v => v != null);
   if (!vals.length) return null;
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
@@ -308,11 +450,13 @@ function suggestScores(deal) {
     reasons.fit = (reasons.fit || "") + " Боли по сегментам описаны.";
   }
 
-  const avgPct = avgRequirementPct(tr);
+  const avgPct = avgRequirementPct(tr, deal);
   const techFromPct = pctToTechnicalScore(avgPct);
   if (techFromPct != null) {
     scores.technical = techFromPct;
-    reasons.technical = `Среднее соответствие требованиям: ${avgPct}% (продукт ${tr.productRequirementsPct ?? "—"}%, пилот ${tr.pilotRequirementsPct ?? "—"}%)`;
+    const pilotPct = requirementPctValue(deal, tr, "pilot");
+    const productPct = requirementPctValue(deal, tr, "product");
+    reasons.technical = `Среднее соответствие требованиям: ${avgPct}% (продукт ${productPct ?? "—"}%, пилот ${pilotPct ?? "—"}%)`;
   }
 
   if (LATE_STAGES.includes(stage) || PILOT_STAGES.includes(stage)) {
@@ -356,20 +500,21 @@ function sanePct(v) {
   return n;
 }
 
-function enrichDeal(deal) {
+function enrichDeal(deal, scoringOpts) {
   const d = migrateDeal(deal);
-  const score = calcDealScore(d.scores);
+  const score = calcDealScore(d.scores, d.manualProb, scoringOpts);
   const computedProb = calcComputedProb(score, d.commitStatus, d.budgetStatus);
   const prob = d.manualProb > 0 ? d.manualProb : (computedProb ?? 0);
-  const category = calcCategory(score, d.commitStatus, d.budgetStatus);
+  const category = calcCategory(score, d.commitStatus, d.budgetStatus, scoringOpts);
   const daysSince = daysBetween(d.lastUpdate);
-  const daysTo = daysUntil(d.taskDue);
+  const taskDueDate = getDealTaskDue(d.id) || d.taskDue || "";
+  const daysTo = daysUntil(taskDueDate);
   const quality = calcDataQuality(d);
   const riskFlag = calcRiskFlag(d, category, daysSince, daysTo);
   const expectedAmount = Number(d.amount) || 0;
   const weighted = weightedAmount(expectedAmount, score, category);
   return {
-    ...d, score, computedProb, prob, category, daysSince, daysTo, quality, riskFlag, weighted,
+    ...d, score, computedProb, prob, category, daysSince, daysTo, taskDue: taskDueDate, quality, riskFlag, weighted,
     expectedAmount,
     commitLabel: commitLabel(d.commitStatus),
     projectCompliancePct: sanePct(d.techResearch?.productRequirementsPct),
@@ -438,8 +583,8 @@ function categoryBadgeClass(cat) {
   return map[cat] || "";
 }
 
-function calcMetrics(deals) {
-  const all = deals.map(enrichDeal);
+function calcMetrics(deals, scoringOpts) {
+  const all = deals.map(d => enrichDeal(d, scoringOpts));
   const totalPipeline = all.reduce((s, x) => s + (x.expectedAmount || 0), 0);
   const weighted = all.filter(x => isWeightedDeal(x.score, x.category)).reduce((s, x) => s + (x.expectedAmount || 0), 0);
   const counts = { "Горячая": 0, "Тёплая": 0, "Наблюдение": 0, "Отказ": 0 };
@@ -558,6 +703,7 @@ function calcMetrics(deals) {
   const topSegments = Object.entries(seekingCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   const compStats = calcCompetitorAnalytics(all);
+  const replStats = calcReplacementAnalytics(all);
 
   const productPcts = all.map(x => x.projectCompliancePct).filter(v => v != null);
   const pilotPcts = all.map(x => x.pilotCompliancePct).filter(v => v != null);
@@ -574,17 +720,27 @@ function calcMetrics(deals) {
   const pilotStages = ["Подготовка Пилота", "Пилот", "Пилот Окончен"];
   const inPilot = all.filter(x => pilotStages.includes(x.stage)).length;
 
+  const byLossReason = {};
+  all.filter(x => x.stage === "Отказ").forEach(x => {
+    const r = (x.lossReason || "").trim() || "Не указана";
+    byLossReason[r] = (byLossReason[r] || 0) + 1;
+  });
+  const lossReasonStats = Object.entries(byLossReason)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => ({ reason, count }));
+
   return {
     totalPipeline, weighted, counts, avgScore, incomplete, riskFlags,
     confirmedBudget, confirmedBudgetSum, commitCounts, strongCommits, hotShare,
     passportCompleteness, passportStats, passportIncomplete: passportStats?.incomplete ?? incomplete,
     passportAllBlocksPct: passportAllBlocksStats?.pct ?? 0,
     topRisks, managerPassport, byOwner, stageFunnel, byBudget, byBudgetPeriod,
-    avgLoyalty, highLoyalty, topSegments,
+    avgLoyalty, highLoyalty, topSegments, lossReasonStats,
     avgProductPct, avgPilotPct, topDeals, attention, inPilot, deals: all,
     pipelineCount: all.length, byPartner, budgetMatrix, budgetMatrixPeriods: matrixPeriods,
     budgetMatrixStatuses: statusList,
     ...compStats,
+    ...replStats,
   };
 }
 
@@ -592,19 +748,37 @@ function normCompetitorToken(s) {
   return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Ключ группировки: catalogKey, иначе vendor / product (нормализовано) */
-function competitorEntryKey(e) {
+function pickBetterLabel(current, next) {
+  const c = String(current || "").trim();
+  const n = String(next || "").trim();
+  if (!c) return n;
+  if (!n) return c;
+  return n.length > c.length ? n : c;
+}
+
+/** Единые vendor/product из полей и catalogKey (берём более полные значения) */
+function competitorEntryParts(e) {
+  let vendor = String(e?.vendor || "").trim();
+  let product = String(e?.product || "").trim();
   const ck = String(e?.catalogKey || "").trim();
   if (ck && ck !== "—") {
-    const parts = ck.split("|||").map(p => normCompetitorToken(p)).filter(Boolean);
-    if (parts.length) return parts.join(" / ");
+    const [cv, cp] = ck.split("|||").map(s => String(s || "").trim());
+    if (cv && (!vendor || vendor === "—")) vendor = cv;
+    if (cp && (!product || product === "—")) product = cp;
+    if (cv) vendor = pickBetterLabel(vendor, cv);
+    if (cp) product = pickBetterLabel(product, cp);
   }
-  const vendorRaw = String(e?.vendor || "").trim();
-  const productRaw = String(e?.product || "").trim();
-  const vendor = normCompetitorToken(vendorRaw);
-  const product = normCompetitorToken(productRaw);
-  if (!vendor || vendor === "—") return "— / —";
-  if (!product || product === "—") return vendor;
+  return { vendor, product };
+}
+
+/** Ключ группировки: нормализованный vendor (+ product, если он не дублирует vendor) */
+function competitorEntryKey(e) {
+  const { vendor: vRaw, product: pRaw } = competitorEntryParts(e);
+  const vendor = normCompetitorToken(vRaw);
+  const product = normCompetitorToken(pRaw);
+  if (!vendor || vendor === "—") return "—";
+  const vendorBare = vendor.replace(/\s*\([^)]*\)\s*/g, "").trim() || vendor;
+  if (!product || product === "—" || product === vendor || product === vendorBare) return vendor;
   return `${vendor} / ${product}`;
 }
 
@@ -645,15 +819,19 @@ function calcCompetitorAnalytics(all) {
     const keysInDeal = new Set();
     entries.forEach(e => {
       const key = competitorEntryKey(e);
+      const parts = competitorEntryParts(e);
       if (!byVendor[key]) {
         byVendor[key] = {
           key,
-          vendor: String(e?.vendor || "").trim() || "—",
-          product: String(e?.product || "").trim(),
+          vendor: parts.vendor || "—",
+          product: parts.product || "",
           dealCount: 0,
           mentions: 0,
           statuses: {},
         };
+      } else {
+        byVendor[key].vendor = pickBetterLabel(byVendor[key].vendor, parts.vendor);
+        byVendor[key].product = pickBetterLabel(byVendor[key].product, parts.product);
       }
       byVendor[key].mentions++;
       const st = e.status || "unknown";
@@ -674,7 +852,88 @@ function calcCompetitorAnalytics(all) {
   return { topCompetitors, competitorStatusSummary, dealsWithCompetitors: dealIdsWithCompetitors.size };
 }
 
+function segmentLabelForTechResearch(tr, segId) {
+  if (segId === "other") return tr?.seekingOtherLabel?.trim() || "Другое";
+  const labels = Object.fromEntries((window.ITMEN_CONFIG?.techSegments || []).map(s => [s.id, s.label]));
+  return labels[segId] || segId;
+}
+
+function meaningfulAsIsEntries(tr) {
+  const migrated = typeof migrateTechResearch === "function"
+    ? migrateTechResearch(tr || {})
+    : (tr || {});
+  const entries = [];
+  Object.entries(migrated.asIsStack || {}).forEach(([segId, data]) => {
+    if (!data) return;
+    const parts = competitorEntryParts(data);
+    const vendor = parts.vendor;
+    const product = parts.product;
+    if (!vendor || vendor === "—") return;
+    entries.push({
+      vendor,
+      product,
+      segment: segmentLabelForTechResearch(migrated, segId),
+    });
+  });
+  return entries;
+}
+
+function replacementEntryKey(vendor, product, segment) {
+  const v = normCompetitorToken(vendor);
+  const s = normCompetitorToken(segment);
+  if (!v || v === "—") return null;
+  const p = normCompetitorToken(product);
+  const vendorBare = v.replace(/\s*\([^)]*\)\s*/g, "").trim() || v;
+  const productKey = (!p || p === "—" || p === v || p === vendorBare) ? "" : p;
+  return `${v}|${productKey}|${s}`;
+}
+
+function calcReplacementAnalytics(all) {
+  const byKey = {};
+  const dealIdsWithReplacement = new Set();
+
+  all.forEach(d => {
+    const entries = meaningfulAsIsEntries(d.techResearch);
+    if (!entries.length) return;
+    dealIdsWithReplacement.add(d.id || d.customer);
+    const keysInDeal = new Set();
+    entries.forEach(e => {
+      const key = replacementEntryKey(e.vendor, e.product, e.segment);
+      if (!key) return;
+      if (!byKey[key]) {
+        byKey[key] = {
+          key,
+          vendor: e.vendor,
+          product: e.product || "",
+          segment: e.segment,
+          dealCount: 0,
+          mentions: 0,
+        };
+      } else {
+        byKey[key].vendor = pickBetterLabel(byKey[key].vendor, e.vendor);
+        byKey[key].product = pickBetterLabel(byKey[key].product, e.product);
+      }
+      byKey[key].mentions++;
+      keysInDeal.add(key);
+    });
+    keysInDeal.forEach(k => { byKey[k].dealCount++; });
+  });
+
+  const topReplacements = Object.values(byKey)
+    .sort((a, b) => b.mentions - a.mentions || b.dealCount - a.dealCount)
+    .slice(0, 15);
+
+  return { topReplacements, dealsWithReplacements: dealIdsWithReplacement.size };
+}
+
 function escapeHtml(s) {
   if (s == null) return "";
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+
+window.normalizeManualProb = normalizeManualProb;
+window.manualProbDisplayPct = manualProbDisplayPct;
+window.manualProbToScore = manualProbToScore;
+window.parseManualProbInput = parseManualProbInput;
+window.formatMoneyInput = formatMoneyInput;
+window.parseMoneyInput = parseMoneyInput;

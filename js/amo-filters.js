@@ -40,8 +40,11 @@ function amoFilterActiveCount(filters, cols) {
   return n;
 }
 
-function dealMatchesAmoFilters(d, filters, cols) {
-  const enriched = typeof enrichDeal === "function" ? enrichDeal(d) : d;
+function dealMatchesAmoFilters(d, filters, cols, scoringOpts) {
+  const opts = scoringOpts != null
+    ? scoringOpts
+    : (typeof getDealsScoringOpts === "function" ? getDealsScoringOpts() : null);
+  const enriched = typeof enrichDeal === "function" ? enrichDeal(d, opts) : d;
   const columns = cols || (typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : []);
   for (const col of columns) {
     if (amoFilterIsRange(col)) {
@@ -73,9 +76,20 @@ function dealMatchesAmoFilters(d, filters, cols) {
 function renderAmoFilterPanelHTML(opts) {
   const { filters, draft, cols, deals, expandedKey, fieldSearch } = opts;
   const q = (fieldSearch || "").trim().toLowerCase();
-  const columns = (cols || []).filter(col =>
+  const allCols = cols || [];
+  const filtered = allCols.filter(col =>
     !q || col.label.toLowerCase().includes(q) || col.key.toLowerCase().includes(q)
   );
+  const isActive = col => {
+    if (amoFilterIsRange(col)) return !!(draft[`${col.key}__from`] || draft[`${col.key}__to`]);
+    return amoFilterGetMultiselect(draft, col.key).length > 0 || !!(draft[col.key] || "").toString().trim();
+  };
+  const columns = [...filtered].sort((a, b) => {
+    const aa = isActive(a) ? 0 : 1;
+    const ba = isActive(b) ? 0 : 1;
+    if (aa !== ba) return aa - ba;
+    return a.label.localeCompare(b.label, "ru");
+  });
   const rows = columns.map(col => {
     const isRange = amoFilterIsRange(col);
     const isOpen = expandedKey === col.key;
@@ -115,6 +129,10 @@ function renderAmoFilterPanelHTML(opts) {
   }).join("");
 
   return `<div class="amo-filter-panel">
+    <div class="amo-filter-panel-head">
+      <span class="amo-filter-panel-title">Фильтры</span>
+      <button type="button" class="amo-filter-close" title="Закрыть">✕</button>
+    </div>
     <div class="amo-filter-search-wrap">
       <input type="search" class="amo-f-search" placeholder="Поиск поля…" value="${escapeHtml(fieldSearch || "")}">
     </div>
@@ -131,21 +149,37 @@ function mountAmoFilterPanel(hostEl, opts) {
   const cols = opts.cols || (typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : []);
   const deals = opts.deals || (state?.deals || []);
   let draft = structuredClone(opts.filters || {});
+  const appliedFilters = structuredClone(opts.filters || {});
   let expandedKey = opts.expandedKey || null;
   let fieldSearch = opts.fieldSearch || "";
 
-  const paint = (opts = {}) => {
+  const paint = (paintOpts = {}) => {
+    const searchEl = hostEl.querySelector(".amo-f-search");
+    const hadFocus = searchEl && document.activeElement === searchEl;
+    const selStart = hadFocus ? searchEl.selectionStart : null;
+    const selEnd = hadFocus ? searchEl.selectionEnd : null;
     const scrollEl = hostEl.querySelector(".amo-filter-scroll");
-    const scrollTop = opts.preserveScroll && scrollEl ? scrollEl.scrollTop : 0;
-    hostEl.innerHTML = renderAmoFilterPanelHTML({ filters: opts.filters, draft, cols, deals, expandedKey, fieldSearch });
+    const scrollTop = paintOpts.preserveScroll && scrollEl ? scrollEl.scrollTop : 0;
+    hostEl.innerHTML = renderAmoFilterPanelHTML({ filters: appliedFilters, draft, cols, deals, expandedKey, fieldSearch });
     bind();
-    if (opts.preserveScroll) {
+    if (paintOpts.preserveScroll) {
       const newScrollEl = hostEl.querySelector(".amo-filter-scroll");
       if (newScrollEl) newScrollEl.scrollTop = scrollTop;
+    }
+    const newSearch = hostEl.querySelector(".amo-f-search");
+    if (hadFocus && newSearch) {
+      newSearch.focus();
+      const pos = selStart != null ? selStart : newSearch.value.length;
+      try { newSearch.setSelectionRange(pos, selEnd != null ? selEnd : pos); } catch (_) {}
     }
   };
 
   const bind = () => {
+    hostEl.querySelector(".amo-filter-close")?.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      opts.onClose?.();
+    });
     hostEl.querySelector(".amo-f-search")?.addEventListener("input", e => {
       fieldSearch = e.target.value;
       paint({ preserveScroll: false });
@@ -192,8 +226,9 @@ function mountAmoFilterPanel(hostEl, opts) {
     hostEl.querySelector(".amo-f-reset")?.addEventListener("click", () => {
       draft = {};
       expandedKey = null;
+      fieldSearch = "";
       opts.onReset?.();
-      paint();
+      opts.onApply?.(structuredClone(draft));
     });
   };
 
@@ -205,3 +240,8 @@ window.dealMatchesAmoFilters = dealMatchesAmoFilters;
 window.amoFilterActiveCount = amoFilterActiveCount;
 window.mountAmoFilterPanel = mountAmoFilterPanel;
 window.amoFilterGetMultiselect = amoFilterGetMultiselect;
+
+function getUnifiedFilterCols() {
+  return typeof getKanbanFilterCols === "function" ? getKanbanFilterCols() : [];
+}
+window.getUnifiedFilterCols = getUnifiedFilterCols;

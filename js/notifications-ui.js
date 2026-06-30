@@ -10,11 +10,11 @@ async function refreshNotifications() {
 function renderNotificationBell(items) {
   let bell = document.getElementById("notif-bell");
   if (!bell) {
-    const topbar = document.querySelector(".topbar > div");
+    const topbar = document.getElementById("topbar-tools") || document.querySelector(".topbar-right") || document.querySelector(".topbar > div");
     if (!topbar) return;
     bell = document.createElement("div");
     bell.id = "notif-bell";
-    bell.style.cssText = "margin-left:auto;display:flex;align-items:center;gap:.5rem";
+    bell.className = "topbar-notif";
     topbar.appendChild(bell);
   }
   const n = items.length;

@@ -25,7 +25,7 @@ async function takeDailySnapshot(source = "cron") {
 
   for (const d of deals) {
     if (!d?.id) continue;
-    const score = calcDealScore(d.scores) || 0;
+    const score = calcDealScore(d.scores, d.manualProb) || 0;
     const category = calcCategory(score, d.commitStatus, d.budgetStatus);
     const amount = Number(d.amount) || 0;
     totalPipeline += amount;

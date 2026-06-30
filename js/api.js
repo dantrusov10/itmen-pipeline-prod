@@ -42,27 +42,70 @@ async function gasFetch(payload) {
   return data;
 }
 
-async function apiFetch(path, opts = {}) {
+let pipelineInflight = null;
+
+async function apiFetch(path, opts = {}, attempt = 0) {
+  const isPipeline = /\/api\/pipeline/.test(path);
+  const maxAttempts = isPipeline ? 4 : 2;
   const auth = typeof authHeaders === "function" ? authHeaders() : {};
-  const res = await fetch(window.ITMEN_API.base + path, {
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/json",
-      ...auth,
-      ...(opts.headers || {}),
-    },
-    ...opts,
-  });
-  const data = await res.json().catch(() => ({}));
+  const { headers: extraHeaders, ...restOpts } = opts;
+  let res;
+  try {
+    res = await fetch(window.ITMEN_API.base + path, {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...auth,
+        ...(extraHeaders || {}),
+      },
+      ...restOpts,
+    });
+  } catch (e) {
+    const net = /failed to fetch|networkerror|load failed/i.test(String(e.message || e));
+    if (net && attempt < maxAttempts) {
+      await new Promise(r => setTimeout(r, (isPipeline ? 1000 : 600) * (attempt + 1)));
+      return apiFetch(path, opts, attempt + 1);
+    }
+    throw new Error(net
+      ? "Нет связи с сервером — повторите загрузку"
+      : (e.message || "Ошибка сети"));
+  }
+  const text = await res.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Некорректный ответ сервера (${res.status}, ${text.length} байт)`);
+    }
+  } else if (res.status === 304) {
+    throw new Error("Кэш ответа устарел — повторите загрузку");
+  }
   if (!res.ok) {
     if (res.status === 401 && typeof persistAuth === "function") persistAuth(null);
-    throw new Error(data.error || res.statusText);
+    const err = new Error(data.error || res.statusText);
+    err.status = res.status;
+    err.payload = data;
+    throw err;
   }
   return data;
 }
 
 async function apiLoadPipeline(opts = {}) {
   const lite = opts.lite !== false && (window.ITMEN_API?.backend === "gas" || window.ITMEN_API?.backend === "pocketbase");
+  const inflightKey = `${window.ITMEN_API?.backend || ""}:${lite ? "lite" : "full"}`;
+  if (pipelineInflight?.key === inflightKey) return pipelineInflight.promise;
+  const promise = apiLoadPipelineInner(opts, lite);
+  pipelineInflight = { key: inflightKey, promise };
+  try {
+    return await promise;
+  } finally {
+    if (pipelineInflight?.promise === promise) pipelineInflight = null;
+  }
+}
+
+async function apiLoadPipelineInner(opts, lite) {
   if (window.ITMEN_API.backend === "gas") {
     const action = lite ? "getLite" : "get";
     const res = await fetch(`${window.ITMEN_API.gasUrl}?action=${action}`, { redirect: "follow" });
@@ -105,10 +148,15 @@ async function apiLoadDeal(dealId) {
 
 async function apiSaveDeal(deal) {
   if (window.ITMEN_API.backend === "pocketbase") {
-    return apiFetch(`/api/deals/${encodeURIComponent(deal.id)}`, {
+    const res = await apiFetch(`/api/deals/${encodeURIComponent(deal.id)}`, {
       method: "PATCH",
-      body: JSON.stringify({ deal }),
+      body: JSON.stringify({
+        deal,
+        baseDataEpoch: deal._dataEpoch ?? state._dataEpoch ?? null,
+      }),
     });
+    if (res?.dataEpoch != null && state) state._dataEpoch = res.dataEpoch;
+    return res;
   }
   return apiSavePipeline(
     { ...state, deals: state.deals.map(d => (d.id === deal.id ? deal : d)) },
@@ -116,9 +164,10 @@ async function apiSaveDeal(deal) {
   );
 }
 
-async function apiDeleteDeal(dealId) {
+async function apiDeleteDeal(dealId, opts = {}) {
   if (window.ITMEN_API.backend === "pocketbase") {
-    return apiFetch(`/api/deals/${encodeURIComponent(dealId)}`, { method: "DELETE" });
+    const q = opts.hard ? "?hard=1" : "";
+    return apiFetch(`/api/deals/${encodeURIComponent(dealId)}${q}`, { method: "DELETE" });
   }
   return apiSavePipeline(state, { deletedDealIds: [dealId] });
 }

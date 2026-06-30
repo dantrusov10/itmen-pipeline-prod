@@ -97,7 +97,9 @@ function evaluatePassportBlocks(deal) {
   if (hasPartnerValue(d.partner) && (d.partnerDiscount == null || d.partnerDiscount === "" || Number.isNaN(+d.partnerDiscount))) {
     basicMissing.push("Скидка партнёру");
   }
-  if (!String(d.taskDue || "").trim()) basicMissing.push("Срок задачи");
+  if (!String(d.taskDue || "").trim() && !(typeof getDealTaskDue === "function" && getDealTaskDue(d.id))) {
+    basicMissing.push("Активная задача");
+  }
 
   const minimalMissing = [];
   if (!(Number(d.manualProb) > 0)) minimalMissing.push("Вероятность");
@@ -233,23 +235,16 @@ function calcDataQuality(deal) {
   return allOk ? "OK" : "Неполный";
 }
 
-function renderPassportCompletenessPanel(m, n) {
+function renderPassportCompletenessBody(m, n) {
   const stats = m.passportStats;
   const selected = passportBlockSelection || PASSPORT_BLOCKS.map(b => b.id);
   const complete = stats?.complete ?? (n - (m.passportIncomplete ?? m.incomplete ?? 0));
   const incomplete = stats?.incomplete ?? (m.passportIncomplete ?? m.incomplete ?? 0);
-  const pct = stats?.pct != null ? Math.round(stats.pct * 100) : (m.passportCompleteness != null ? Math.round(m.passportCompleteness * 100) : 0);
   const selectedLabel = selected.map(id => PASSPORT_BLOCKS.find(b => b.id === id)?.short || id).join(" + ") || "—";
   const drillAttrs = typeof dashDrill === "function"
     ? dashDrill(buildDealsReportSpec({}, { type: "passportBlocks", value: selected.join("|") }))
     : "";
-
-  return `<div class="card passport-panel" style="margin-bottom:1.5rem">
-    <div class="card-header passport-panel-head">
-      <span>Полнота паспортов</span>
-      <span class="passport-panel-pct">${pct}%</span>
-    </div>
-    <div class="card-body">
+  return `
       <p class="muted passport-panel-sub">${complete} из ${n} сделок полностью по выбранным блокам: <strong>${escapeHtml(selectedLabel)}</strong></p>
       <div class="passport-block-filters">
         ${PASSPORT_BLOCKS.map(b => {
@@ -267,41 +262,74 @@ function renderPassportCompletenessPanel(m, n) {
         }).join("")}
       </div>
       <div class="passport-panel-actions">
-        <button type="button" class="btn btn-sm dash-drill-row" ${drillAttrs}>Показать неполные (${incomplete}) →</button>
-      </div>
+        <button type="button" class="btn btn-sm dash-drill-row dash-drill-link" ${drillAttrs} onclick="return dashDrillLinkClick(event)">Показать неполные (${incomplete}) →</button>
+      </div>`;
+}
+
+function renderPassportCompletenessPanel(m, n) {
+  const stats = m.passportStats;
+  const pct = stats?.pct != null ? Math.round(stats.pct * 100) : (m.passportCompleteness != null ? Math.round(m.passportCompleteness * 100) : 0);
+  if (typeof dashWidgetCard === "function") {
+    return dashWidgetCard("passport-completeness", `Полнота паспортов · ${pct}%`, renderPassportCompletenessBody(m, n), "passport-panel");
+  }
+  return `<div class="card passport-panel" style="margin-bottom:1.5rem">
+    <div class="card-header passport-panel-head">
+      <span>Полнота паспортов</span>
+      <span class="passport-panel-pct">${pct}%</span>
     </div>
+    <div class="card-body">${renderPassportCompletenessBody(m, n)}</div>
   </div>`;
 }
 
-function renderTopRisksPanel(m) {
+function renderTopRisksBody(m) {
   const rows = m.topRisks || [];
   const max = Math.max(1, rows[0]?.count || 1);
-  return `<div class="card" style="margin-bottom:1.5rem">
-    <div class="card-header">Топ рисков в срезе</div>
-    <div class="card-body">
-      ${rows.length ? `<div class="funnel">
+  return rows.length ? `<div class="funnel">
         ${rows.map(r => {
           const attrs = typeof dashDrill === "function"
             ? dashDrill(buildDealsReportSpec({}, { type: "riskTop", value: r.label }))
             : "";
-          return `<div class="funnel-row dash-drill-row" ${attrs} title="Открыть сделки">
+          return `<div class="funnel-row dash-drill-row dash-drill-link" ${attrs} onclick="return dashDrillLinkClick(event)" title="Открыть сделки">
             <span class="name">${escapeHtml(r.label)}</span>
             <div class="bar-wrap"><div class="bar" style="width:${(r.count / max) * 100}%;background:#c53030"></div></div>
             <span class="count">${r.count}</span>
           </div>`;
         }).join("")}
-      </div>` : `<div class="muted">Нет зафиксированных рисков в текущем срезе</div>`}
-    </div>
+      </div>` : `<div class="muted">Нет зафиксированных рисков в текущем срезе</div>`;
+}
+
+function renderTopRisksPanel(m) {
+  if (typeof dashWidgetCard === "function") {
+    return dashWidgetCard("top-risks", "Топ рисков в срезе", renderTopRisksBody(m));
+  }
+  return `<div class="card" style="margin-bottom:1.5rem">
+    <div class="card-header">Топ рисков в срезе</div>
+    <div class="card-body">${renderTopRisksBody(m)}</div>
   </div>`;
 }
 
-function renderManagerPassportPanel(m) {
+function renderLossReasonsBody(m) {
+  const rows = m.lossReasonStats || [];
+  const max = Math.max(1, rows[0]?.count || 1);
+  return rows.length ? `<div class="funnel">
+    ${rows.map(r => {
+      const attrs = typeof dashDrill === "function"
+        ? dashDrill(buildDealsReportSpec({ stage: ["Отказ"], lossReason: [r.reason] }))
+        : "";
+      return `<div class="funnel-row dash-drill-row" ${attrs} title="Открыть сделки">
+        <span class="name">${escapeHtml(r.reason)}</span>
+        <div class="bar-wrap"><div class="bar" style="width:${(r.count / max) * 100}%;background:#c53030"></div></div>
+        <span class="count">${r.count}</span>
+      </div>`;
+    }).join("")}
+  </div>` : `<div class="muted">Нет отказных сделок в текущем срезе</div>`;
+}
+
+function renderManagerPassportBody(m) {
   const rows = m.managerPassport || [];
   const selected = passportBlockSelection || PASSPORT_BLOCKS.map(b => b.id);
   const blockCols = PASSPORT_BLOCKS.map(b => `<th title="${escapeHtml(b.hint)}">${escapeHtml(b.short)}</th>`).join("");
-  return `<div class="card" style="margin-bottom:1.5rem">
-    <div class="card-header">Менеджеры: полнота паспортов</div>
-    <div class="card-body table-wrap">
+  return `
       <p class="muted" style="font-size:.78rem;margin-bottom:.65rem">
         <strong>Все блоки</strong> — доля сделок, где заполнены все выбранные блоки сразу (${selected.map(id => PASSPORT_BLOCKS.find(b => b.id === id)?.short || id).join(" + ")}).
         <strong>Ср. %</strong> — среднее заполнение по выбранным блокам (понятнее для сравнения менеджеров).
@@ -331,7 +359,15 @@ function renderManagerPassportPanel(m) {
           </tr>`;
         }).join("") || `<tr><td colspan="${6 + PASSPORT_BLOCKS.length}" class="muted">Нет данных</td></tr>`}
         </tbody>
-      </table>
-    </div>
+      </table>`;
+}
+
+function renderManagerPassportPanel(m) {
+  if (typeof dashWidgetCard === "function") {
+    return dashWidgetCard("manager-passport", "Менеджеры: полнота паспортов", renderManagerPassportBody(m));
+  }
+  return `<div class="card" style="margin-bottom:1.5rem">
+    <div class="card-header">Менеджеры: полнота паспортов</div>
+    <div class="card-body table-wrap">${renderManagerPassportBody(m)}</div>
   </div>`;
 }
