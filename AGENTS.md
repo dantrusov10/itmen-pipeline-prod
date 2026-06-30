@@ -64,7 +64,7 @@ bash /opt/itmen-pipeline/scripts/setup-schema-migrations.sh
 - Amo tokens: `/opt/itmen-pipeline/amo-tokens.json` (не в git)
 - `KAITEN_WEBHOOK_SECRET`
 - `ITMEN_BUILD_ID` или `GIT_COMMIT` — для `/api/health` → `build`
-- Опционально почта: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`
+- Опционально почта: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` (Selectel: `smtp.mail.selcloud.ru:1127`)
 
 ## Таймеры systemd
 

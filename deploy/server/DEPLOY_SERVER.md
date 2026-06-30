@@ -56,10 +56,31 @@ ITMEN_REPO=https://github.com/dantrusov10/itmen-pipeline-old.git ITMEN_BRANCH=ma
 ## Деплой API
 
 ```bash
-# с локальной машины
+# с локальной машины (полный деплой API + фронт + таймеры)
+bash deploy/server/scripts/deploy-to-prod.sh
+
+# только API
 scp -r deploy/server/api/src newlevel-prod:/opt/itmen-pipeline/api/
-ssh newlevel-prod "systemctl restart itmen-pipeline-api"
+ssh newlevel-prod "cd /opt/itmen-pipeline/api && npm install --omit=dev && systemctl restart itmen-pipeline-api"
 ```
+
+## Email-напоминания о задачах
+
+Таймер `itmen-pipeline-task-email.timer` — каждую минуту, письмо в момент `due_at` (МСК).
+
+Настройка SMTP (Selectel Email Service) в `/opt/itmen-pipeline/.env`:
+
+```
+SMTP_HOST=smtp.mail.selcloud.ru
+SMTP_PORT=1127
+SMTP_SECURE=1
+SMTP_USER=<логин из панели Selectel>
+SMTP_PASS=<пароль>
+MAIL_FROM=ITMen Pipeline <noreply@nwlvl.ru>
+```
+
+Тест: `node /opt/itmen-pipeline/scripts/test-smtp.js user@example.com`
+
 
 ## Пользователи
 

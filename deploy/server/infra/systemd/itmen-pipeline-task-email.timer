@@ -1,0 +1,11 @@
+[Unit]
+Description=Task due email reminders every minute (MSK)
+
+[Timer]
+OnBootSec=1min
+OnCalendar=minutely
+AccuracySec=1s
+Unit=itmen-pipeline-task-email.service
+
+[Install]
+WantedBy=timers.target

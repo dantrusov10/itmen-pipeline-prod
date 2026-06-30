@@ -1,0 +1,13 @@
+[Unit]
+Description=ITMen Pipeline task due email reminders
+After=network.target itmen-pipeline-api.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/itmen-pipeline
+EnvironmentFile=-/opt/itmen-pipeline/.env
+ExecStart=/usr/bin/node /opt/itmen-pipeline/scripts/run-task-email-reminders.js
+User=root
+
+[Install]
+WantedBy=multi-user.target

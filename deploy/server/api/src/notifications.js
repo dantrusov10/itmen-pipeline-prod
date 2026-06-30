@@ -68,12 +68,7 @@ async function notifyUserByManagerName(managerName, payload) {
   const users = await listAll("pipeline_users");
   const hit = users.find(u => String(u.manager_name || "").trim().normalize("NFC").toLowerCase() === key);
   if (!hit) return null;
-  const note = await createNotification({ userId: hit.id, ...payload });
-  try {
-    const { sendEmailNotification } = require("./mailer");
-    await sendEmailNotification(hit.email, payload);
-  } catch (_) { /* optional */ }
-  return note;
+  return createNotification({ userId: hit.id, ...payload });
 }
 
 module.exports = {

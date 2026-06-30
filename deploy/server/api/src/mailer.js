@@ -8,8 +8,12 @@
 async function sendEmailNotification(to, { title, message, link } = {}) {
   const email = String(to || "").trim();
   if (!email) return false;
-  const host = process.env.SMTP_HOST || "";
+
+  const host = process.env.SMTP_HOST || (process.env.SMTP_USER ? "smtp.mail.selcloud.ru" : "");
   if (!host) return false;
+
+  const port = Number(process.env.SMTP_PORT || (host.includes("selcloud") ? 1127 : 587));
+  const secure = process.env.SMTP_SECURE === "1" || port === 465 || port === 1127;
 
   const subject = String(title || "ITMen Pipeline").trim();
   const body = [message || "", link ? `\n\n${link}` : ""].filter(Boolean).join("\n");
@@ -18,12 +22,13 @@ async function sendEmailNotification(to, { title, message, link } = {}) {
     const nodemailer = require("nodemailer");
     const transporter = nodemailer.createTransport({
       host,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === "1",
+      port,
+      secure,
       auth: process.env.SMTP_USER ? {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS || "",
       } : undefined,
+      tls: { servername: host.replace(/^\[|\]$/g, "") },
     });
     await transporter.sendMail({
       from: process.env.MAIL_FROM || process.env.SMTP_USER,

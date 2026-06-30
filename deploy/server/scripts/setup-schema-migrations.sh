@@ -12,6 +12,7 @@ for script in \
   apply-crm-v7-presale-deal-fields.py \
   apply-crm-v8-task-created-at.py \
   apply-crm-v9-presale-deals.py \
+  apply-crm-v10-task-email-sent.py \
   add-entity-collections.py
 do
   if [[ -f "${script}" ]]; then

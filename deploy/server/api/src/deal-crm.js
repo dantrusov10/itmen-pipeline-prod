@@ -303,6 +303,8 @@ async function saveTask(dealId, task, { savedBy, fromAmo } = {}) {
   const prevDueNorm = prev?.due_at ? normalizeDueAtMsk(prev.due_at) : "";
   const nextDueNorm = task.dueAt ? normalizeDueAtMsk(task.dueAt) : "";
   const dueRescheduled = !isNew && prev && prevDueNorm && nextDueNorm && nextDueNorm !== prevDueNorm && status !== "done";
+  if (dueRescheduled) body.due_email_sent_at = null;
+  else if (isNew) body.due_email_sent_at = null;
   if (dueRescheduled && !fromAmo) {
     const comment = String(task.rescheduleComment || "").trim();
     if (!comment) {
@@ -360,22 +362,6 @@ async function saveTask(dealId, task, { savedBy, fromAmo } = {}) {
       refId: row.id,
       at: task.doneAt || undefined,
     });
-  }
-  try {
-    const assignee = String(body.assignee || "").trim();
-    const author = String(savedBy || "").trim();
-    if (!fromAmo && assignee && author && assignee !== author) {
-      const { notifyUserByManagerName } = require("./notifications");
-      const dealRow = await findOne("deals", `deal_id="${String(dealId).replace(/"/g, '\\"')}"`);
-      await notifyUserByManagerName(assignee, {
-        title: isNew ? "Новая задача" : (dueRescheduled ? "Задача перенесена" : "Обновление задачи"),
-        message: `${taskTitle}${dealRow?.customer ? ` · ${dealRow.customer}` : ""} (${dealId})`,
-        link: `#deal/${encodeURIComponent(dealId)}`,
-        type: isNew ? "task_assigned" : "task_update",
-      });
-    }
-  } catch (e) {
-    console.warn("task notify", dealId, e.message);
   }
   return mapTask(row, dealId);
 }
