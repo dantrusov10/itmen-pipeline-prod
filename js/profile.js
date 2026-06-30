@@ -94,10 +94,8 @@ async function renderProfileSelf() {
         <div><label>Телефон</label><input id="prof-phone" value="${escapeHtml(profile.phone)}"></div>
       </div>
       <div class="profile-notify" style="margin-top:1rem">
-        <label><input type="checkbox" id="prof-notify-email" ${profile.notifyEmail ? "checked" : ""}> Email-уведомления</label>
-        <label><input type="checkbox" id="prof-notify-task" ${profile.notifyTaskDue ? "checked" : ""}> Просроченные задачи</label>
-        <label><input type="checkbox" id="prof-notify-deal" ${profile.notifyDealAssigned ? "checked" : ""}> Передача сделок</label>
-        <label><input type="checkbox" id="prof-notify-comment" ${profile.notifyComments ? "checked" : ""}> Комментарии</label>
+        <label><input type="checkbox" id="prof-notify-task-email" ${profile.notifyEmail && profile.notifyTaskDue ? "checked" : ""}> Напоминания о задачах на email</label>
+        <p class="muted" style="font-size:.82rem;margin:.35rem 0 0">Письмо в момент срока задачи на email из профиля (${escapeHtml(profile.email || u.email || "—")}).</p>
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="prof-save" style="margin-top:1rem">Сохранить настройки</button>
       <hr style="margin:1.5rem 0">
@@ -117,12 +115,11 @@ async function renderProfileSelf() {
       <button type="button" class="btn btn-sm" id="pwd-save" style="margin-top:.5rem">Сменить пароль</button>`;
     bindProfileAvatarUi();
     document.getElementById("prof-save").onclick = async () => {
+      const taskEmail = document.getElementById("prof-notify-task-email").checked;
       await apiUpdateProfile({
         phone: document.getElementById("prof-phone").value,
-        notifyEmail: document.getElementById("prof-notify-email").checked,
-        notifyTaskDue: document.getElementById("prof-notify-task").checked,
-        notifyDealAssigned: document.getElementById("prof-notify-deal").checked,
-        notifyComments: document.getElementById("prof-notify-comment").checked,
+        notifyEmail: taskEmail,
+        notifyTaskDue: taskEmail,
       });
       if (profileAvatarPendingFile) {
         await apiUploadAvatar(profileAvatarPendingFile);

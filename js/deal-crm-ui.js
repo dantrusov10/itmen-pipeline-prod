@@ -518,7 +518,7 @@ function renderDealOpenTasksPin(crm, audience) {
     ? filterCrmForFeedAudience(crm, aud)
     : crm;
   const canEdit = dealTabCanEdit();
-  const canEditDue = canEdit && aud !== "presale";
+  const canEditDue = canEdit;
   const openTasks = (filtered.tasks || []).filter(t => t.status !== "done");
   if (!openTasks.length) return "";
   return `<div class="amo-feed-open-tasks">${openTasks.map(t => renderAmoOpenTaskCard(t, canEdit, canEditDue)).join("")}</div>`;
@@ -777,7 +777,6 @@ function bindDealActivityComposeEvents(dealId, onRefresh, opts = {}) {
 }
 
 function bindDealActivityEvents(dealId, onRefresh, opts = {}) {
-  const allowDueReschedule = opts.mode !== "presale";
   const refresh = async () => {
     delete dealCrmCache[dealId];
     if (typeof loadDealNextTaskDue === "function") await loadDealNextTaskDue();
@@ -839,7 +838,7 @@ function bindDealActivityEvents(dealId, onRefresh, opts = {}) {
     });
   });
 
-  if (allowDueReschedule) document.querySelectorAll(".amo-task-due-btn").forEach(btn => {
+  document.querySelectorAll(".amo-task-due-btn").forEach(btn => {
     btn.addEventListener("click", e => {
       e.stopPropagation();
       const card = btn.closest(".amo-task-card");
@@ -857,7 +856,7 @@ function bindDealActivityEvents(dealId, onRefresh, opts = {}) {
     });
   });
 
-  if (allowDueReschedule) document.querySelectorAll(".amo-task-reschedule-cancel").forEach(btn => {
+  document.querySelectorAll(".amo-task-reschedule-cancel").forEach(btn => {
     btn.addEventListener("click", e => {
       e.stopPropagation();
       const row = btn.closest(".amo-task-reschedule-row");
@@ -865,7 +864,7 @@ function bindDealActivityEvents(dealId, onRefresh, opts = {}) {
     });
   });
 
-  if (allowDueReschedule) document.querySelectorAll(".amo-task-reschedule-save").forEach(btn => {
+  document.querySelectorAll(".amo-task-reschedule-save").forEach(btn => {
     btn.addEventListener("click", async e => {
       e.stopPropagation();
       const card = btn.closest(".amo-task-card");
@@ -903,18 +902,16 @@ function bindDealActivityEvents(dealId, onRefresh, opts = {}) {
     });
   });
 
-  if (allowDueReschedule) {
-    document.querySelectorAll(".amo-task-due-input").forEach(inp => {
-      if (typeof wireDatetimeInput === "function") wireDatetimeInput(inp);
+  document.querySelectorAll(".amo-task-due-input").forEach(inp => {
+    if (typeof wireDatetimeInput === "function") wireDatetimeInput(inp);
+  });
+  document.querySelectorAll(".amo-task-reschedule-comment").forEach(inp => {
+    inp.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      inp.closest(".amo-task-reschedule-row")?.querySelector(".amo-task-reschedule-save")?.click();
     });
-    document.querySelectorAll(".amo-task-reschedule-comment").forEach(inp => {
-      inp.addEventListener("keydown", ev => {
-        if (ev.key !== "Enter") return;
-        ev.preventDefault();
-        inp.closest(".amo-task-reschedule-row")?.querySelector(".amo-task-reschedule-save")?.click();
-      });
-    });
-  }
+  });
 
   document.querySelectorAll(".task-done-cb").forEach(cb => {
     cb.onchange = async () => {
