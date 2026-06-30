@@ -44,7 +44,7 @@ function mapTask(row, dealId) {
     description: row.description || "",
     result: status === "done" ? (row.description || "") : "",
     assignee: row.assignee || "",
-    dueAt: row.due_at || "",
+    dueAt: normalizeDueAtMsk(row.due_at) || row.due_at || "",
     doneAt: row.done_at || "",
     reminderAt: row.reminder_at || "",
     status,

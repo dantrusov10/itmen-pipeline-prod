@@ -29,8 +29,13 @@ function mskTodayKey() {
 }
 
 function parseMskDateTime(raw) {
-  const s = String(raw || "").trim();
+  let s = String(raw || "").trim();
   if (!s) return null;
+  // PocketBase date: наивное МСК, часто с суффиксом .000Z (не UTC)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s) && /Z$/i.test(s)) {
+    s = s.replace(/\.\d{3}Z$/i, "").replace(/Z$/i, "");
+    if (s.includes("T")) s = s.replace("T", " ");
+  }
   let iso = s;
   if (!/[zZ]$|[+-]\d{2}:\d{2}$/.test(s)) {
     const norm = s.includes(" ") && !s.includes("T") ? s.replace(" ", "T") : s;
@@ -146,6 +151,32 @@ function mskTodayRu() {
   return `${p.day}.${p.month}.${p.year}`;
 }
 
+/** Понедельник недели (ключ YYYY-MM-DD, календарная дата МСК) */
+function mskWeekStartKey(ref = new Date()) {
+  const p = mskParts(ref instanceof Date ? ref : new Date());
+  const dt = new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
+  const mon0 = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - mon0);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function mskAddDaysKey(key, days) {
+  const [y, m, d] = String(key || "").split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function mskDowLabel(key) {
+  const [y, m, d] = String(key || "").split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  return dt.toLocaleDateString("ru-RU", { weekday: "short", timeZone: MSK_TZ });
+}
+
+function mskDom(key) {
+  return String(key || "").split("-")[2] || "";
+}
+
 /** Открыть нативный выбор даты/времени (Chrome/Edge); иначе focus */
 function openDatetimePicker(input) {
   if (!input) return;
@@ -185,3 +216,7 @@ window.formatRuDateTime = formatRuDateTime;
 window.isoDateKeyToRu = isoDateKeyToRu;
 window.ruDateToIsoKey = ruDateToIsoKey;
 window.mskTodayRu = mskTodayRu;
+window.mskWeekStartKey = mskWeekStartKey;
+window.mskAddDaysKey = mskAddDaysKey;
+window.mskDowLabel = mskDowLabel;
+window.mskDom = mskDom;

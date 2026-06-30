@@ -30,8 +30,12 @@ function formatMskNaiveFromUnix(unixSec) {
 }
 
 function parseMskDateTime(raw) {
-  const s = String(raw || "").trim();
+  let s = String(raw || "").trim();
   if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s) && /Z$/i.test(s)) {
+    s = s.replace(/\.\d{3}Z$/i, "").replace(/Z$/i, "");
+    if (s.includes("T")) s = s.replace("T", " ");
+  }
   let iso = s;
   if (!/[zZ]$|[+-]\d{2}:\d{2}$/.test(s)) {
     const norm = s.includes(" ") && !s.includes("T") ? s.replace(" ", "T") : s;

@@ -1,25 +1,34 @@
-/* Календарь задач — неделя / месяц / списком */
-let calendarWeekStart = startOfWeek(new Date());
+/* Календарь задач — неделя / месяц / списком (все даты/часы — МСК) */
+let calendarWeekStartKey = typeof mskWeekStartKey === "function" ? mskWeekStartKey() : "";
 let calendarView = "week";
 let calendarAssignee = "";
 let calendarOverdueOnly = false;
 
-function startOfWeek(d) {
-  const x = new Date(d);
-  const day = (x.getDay() + 6) % 7;
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function addDays(d, n) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-
-function fmtDate(d) {
+function calWeekStartKey(ref) {
+  if (typeof mskWeekStartKey === "function") {
+    return mskWeekStartKey(ref instanceof Date ? ref : new Date());
+  }
+  const d = ref instanceof Date ? ref : new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function calAddDaysKey(key, n) {
+  if (typeof mskAddDaysKey === "function") return mskAddDaysKey(key, n);
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function calMonthStartKey(ref) {
+  const key = calWeekStartKey(ref);
+  const [y, m] = key.split("-");
+  return `${y}-${m}-01`;
+}
+
+function calMonthEndKey(y, m0) {
+  const last = new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+  return `${y}-${String(m0 + 1).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
 }
 
 function parseTaskDueDate(t) {
@@ -34,7 +43,10 @@ function parseTaskDueDate(t) {
 function taskDateKey(t) {
   if (typeof mskDateKey === "function") return mskDateKey(t?.dueAt);
   const d = parseTaskDueDate(t);
-  if (d) return fmtDate(d);
+  if (d && typeof mskParts === "function") {
+    const p = mskParts(d);
+    return `${p.year}-${p.month}-${p.day}`;
+  }
   return (t.dueAt || "").slice(0, 10);
 }
 
@@ -42,6 +54,10 @@ function taskHour(t) {
   if (typeof mskHour === "function") return mskHour(t?.dueAt);
   const d = parseTaskDueDate(t);
   if (!d) return 9;
+  if (typeof mskParts === "function") {
+    const h = parseInt(mskParts(d).hour, 10);
+    return Math.max(8, Math.min(20, Number.isNaN(h) ? 9 : h));
+  }
   return Math.max(8, Math.min(20, d.getHours()));
 }
 
@@ -56,7 +72,7 @@ function taskStatusKind(t) {
   if (t.status === "done") return "done";
   if (typeof isTaskOverdueMsk === "function" && isTaskOverdueMsk(t.dueAt, t.status)) return "overdue";
   const due = taskDateKey(t);
-  const today = typeof mskTodayKey === "function" ? mskTodayKey() : fmtDate(new Date());
+  const today = typeof mskTodayKey === "function" ? mskTodayKey() : calWeekStartKey(new Date());
   if (due && due < today) return "overdue";
   return "planned";
 }
@@ -122,19 +138,30 @@ async function renderCalendar() {
   const admin = typeof isAdmin === "function" && isAdmin();
   const owners = (state?.lists?.owners || []).filter(Boolean);
   const ws = calendarView === "week" || calendarView === "list"
-    ? startOfWeek(calendarWeekStart)
-    : new Date(calendarWeekStart.getFullYear(), calendarWeekStart.getMonth(), 1);
+    ? calendarWeekStartKey
+    : calMonthStartKey(calendarWeekStartKey);
   const we = calendarView === "week" || calendarView === "list"
-    ? addDays(ws, 6)
-    : new Date(ws.getFullYear(), ws.getMonth() + 1, 0);
+    ? calAddDaysKey(ws, 6)
+    : (() => {
+      const [y, m] = ws.split("-").map(Number);
+      return calMonthEndKey(y, m - 1);
+    })();
+
+  const wsRu = typeof isoDateKeyToRu === "function" ? isoDateKeyToRu(ws) : ws;
+  const weRu = typeof isoDateKeyToRu === "function" ? isoDateKeyToRu(we) : we;
+  const monthLabel = (() => {
+    const [y, m] = ws.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, 1, 12, 0, 0));
+    return dt.toLocaleString("ru-RU", { month: "long", year: "numeric", timeZone: "Europe/Moscow" });
+  })();
 
   el.innerHTML = `<div class="calendar-toolbar">
     <button type="button" class="btn btn-sm" id="cal-prev">◀</button>
     <button type="button" class="btn btn-sm" id="cal-today">Сегодня</button>
     <button type="button" class="btn btn-sm" id="cal-next">▶</button>
     <strong class="cal-range-label">${calendarView === "month"
-      ? ws.toLocaleString("ru", { month: "long", year: "numeric" })
-      : `${ws.toLocaleDateString("ru", { day: "numeric", month: "short" })} — ${we.toLocaleDateString("ru", { day: "numeric", month: "short", year: "numeric" })}`}</strong>
+      ? monthLabel
+      : `${wsRu} — ${weRu}`}</strong>
     ${admin ? `<select id="cal-assignee" class="cal-assignee-select">
       <option value=""${calendarAssignee === "" ? " selected" : ""}>Все менеджеры</option>
       <option value="__mine__"${calendarAssignee === "__mine__" ? " selected" : ""}>Только мои</option>
@@ -149,15 +176,15 @@ async function renderCalendar() {
   </div><div id="cal-grid" class="muted">Загрузка…</div>`;
 
   document.getElementById("cal-prev").onclick = () => {
-    calendarWeekStart = addDays(calendarWeekStart, calendarView === "month" ? -30 : -7);
+    calendarWeekStartKey = calAddDaysKey(calendarWeekStartKey, calendarView === "month" ? -30 : -7);
     renderCalendar();
   };
   document.getElementById("cal-next").onclick = () => {
-    calendarWeekStart = addDays(calendarWeekStart, calendarView === "month" ? 30 : 7);
+    calendarWeekStartKey = calAddDaysKey(calendarWeekStartKey, calendarView === "month" ? 30 : 7);
     renderCalendar();
   };
   document.getElementById("cal-today").onclick = () => {
-    calendarWeekStart = startOfWeek(new Date());
+    calendarWeekStartKey = calWeekStartKey(new Date());
     renderCalendar();
   };
   el.querySelectorAll("[data-view]").forEach(btn => {
@@ -172,8 +199,8 @@ async function renderCalendar() {
     renderCalendar();
   });
 
-  const from = fmtDate(ws);
-  const to = fmtDate(we);
+  const from = ws;
+  const to = we;
   const params = { ...calendarAssigneeParams(admin), from, to };
 
   try {
@@ -181,16 +208,19 @@ async function renderCalendar() {
     const tasks = filterCalendarTasks(items || []);
     if (calendarView === "list") renderCalendarList(tasks);
     else if (calendarView === "week") renderCalendarWeek(ws, tasks);
-    else renderCalendarMonth(ws.getFullYear(), ws.getMonth(), tasks);
+    else {
+      const [y, m] = ws.split("-").map(Number);
+      renderCalendarMonth(y, m - 1, tasks);
+    }
   } catch (e) {
     document.getElementById("cal-grid").innerHTML = `<p class="muted" style="color:#b45309">${escapeHtml(e.message)}</p>`;
   }
 }
 
-function renderCalendarWeek(weekStart, tasks) {
+function renderCalendarWeek(weekStartKey, tasks) {
   const hours = [];
   for (let h = 8; h <= 20; h++) hours.push(h);
-  const days = [...Array(7)].map((_, i) => addDays(weekStart, i));
+  const days = [...Array(7)].map((_, i) => calAddDaysKey(weekStartKey, i));
   const bySlot = {};
   tasks.forEach(t => {
     const key = taskDateKey(t);
@@ -200,20 +230,24 @@ function renderCalendarWeek(weekStart, tasks) {
     bySlot[slot].push(t);
   });
 
+  const todayKey = typeof mskTodayKey === "function" ? mskTodayKey() : calWeekStartKey(new Date());
+
   let html = `<div class="cal-week-wrap"><div class="cal-week-grid" style="--cal-hours:${hours.length}">`;
   html += `<div class="cal-week-corner"></div>`;
-  days.forEach(d => {
-    const isToday = fmtDate(d) === fmtDate(new Date());
+  days.forEach(key => {
+    const isToday = key === todayKey;
+    const dow = typeof mskDowLabel === "function" ? mskDowLabel(key) : "";
+    const dom = typeof mskDom === "function" ? mskDom(key) : key.split("-")[2];
     html += `<div class="cal-week-dayhead${isToday ? " today" : ""}">
-      <span class="cal-dow">${d.toLocaleDateString("ru", { weekday: "short" })}</span>
-      <span class="cal-dom">${d.getDate()}</span></div>`;
+      <span class="cal-dow">${escapeHtml(dow)}</span>
+      <span class="cal-dom">${escapeHtml(dom)}</span></div>`;
   });
   hours.forEach(h => {
     html += `<div class="cal-time-label">${String(h).padStart(2, "0")}:00</div>`;
-    days.forEach(d => {
-      const key = `${fmtDate(d)}-${h}`;
-      const list = bySlot[key] || [];
-      html += `<div class="cal-slot" data-slot="${key}">
+    days.forEach(key => {
+      const slotKey = `${key}-${h}`;
+      const list = bySlot[slotKey] || [];
+      html += `<div class="cal-slot" data-slot="${slotKey}">
         ${list.map(t => renderCalEventHtml(t)).join("")}
       </div>`;
     });
