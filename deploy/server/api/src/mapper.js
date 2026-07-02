@@ -344,8 +344,7 @@ async function loadPipelineState({
   user = null,
 } = {}) {
   const parsedListQuery = listQuery ? parseListQuery(listQuery) : null;
-  const filteredMode = !dealId && !all && parsedListQuery && hasActiveListQuery(parsedListQuery);
-  const paginated = !dealId && !all && !filteredMode && page != null;
+  const pagedListMode = !dealId && !all && page != null;
 
   const [metaRow, listRows, scoringRows, dealResult] = await Promise.all([
     findOne("pipeline_meta", 'slug="main"'),
@@ -356,27 +355,9 @@ async function loadPipelineState({
         const rows = await listAll("deals", { filter: `deal_id="${dealId.replace(/"/g, '\\"')}"` });
         return { rows, pagination: null };
       }
-      if (filteredMode) {
+      if (pagedListMode) {
         const rows = await listAll("deals", { sort: "deal_id" });
         return { rows, pagination: null };
-      }
-      if (paginated) {
-        const archivedFilter = includeArchived ? "" : '(archived=false || archived="" || archived=null)';
-        const res = await listPage("deals", {
-          page: Math.max(1, Number(page) || 1),
-          perPage: Math.min(200, Math.max(1, Number(perPage) || 100)),
-          sort: "deal_id",
-          filter: archivedFilter || undefined,
-        });
-        return {
-          rows: res.items || [],
-          pagination: {
-            page: res.page || 1,
-            perPage: res.perPage || perPage,
-            total: res.totalItems || 0,
-            totalPages: res.totalPages || 1,
-          },
-        };
       }
       const rows = await listAll("deals", { sort: "deal_id" });
       return { rows, pagination: null };
@@ -392,9 +373,8 @@ async function loadPipelineState({
     ? dealRows
     : dealRows.filter(row => !row.archived);
 
-  const pbIds = activeRows.map(r => r.id);
   const childrenByDeal = lite && !dealId
-    ? (paginated ? await loadLiteChildrenForDealIds(pbIds) : await loadLiteChildren())
+    ? await loadLiteChildren()
     : await loadChildrenByDeal();
 
   const deals = activeRows.map(row => {
@@ -423,11 +403,13 @@ async function loadPipelineState({
     _savedBy: meta.saved_by || "web",
     _dataEpoch: meta.data_epoch || 1,
   };
-  if (filteredMode) {
+  if (pagedListMode) {
     const queryPayload = {
-      ...parsedListQuery,
-      page: parsedListQuery.page || page || 1,
-      perPage: parsedListQuery.perPage || perPage || 100,
+      ...(parsedListQuery || {}),
+      sortKey: parsedListQuery?.sortKey || "amount",
+      sortDir: parsedListQuery?.sortDir || "desc",
+      page: parsedListQuery?.page || page || 1,
+      perPage: parsedListQuery?.perPage || perPage || 100,
     };
     const result = filterAndPaginateDeals(state.deals, queryPayload, user);
     state.deals = result.deals;

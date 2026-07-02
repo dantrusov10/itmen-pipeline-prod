@@ -719,7 +719,14 @@ async function bootstrapPipelineFromServer() {
   const cached = window.ITMEN_API?.backend === "pocketbase" ? null : loadStateLocal();
   let lite;
   try {
-    lite = await apiLoadPipeline({ lite: true, page: 1, perPage: 100 });
+    lite = await apiLoadPipeline({
+      lite: true,
+      page: 1,
+      perPage: 100,
+      listQuery: typeof buildDealsListQueryParams === "function"
+        ? buildDealsListQueryParams()
+        : { sortKey: "amount", sortDir: "desc" },
+    });
   } catch (e) {
     if (cached?.deals?.length) {
       console.warn("pipeline load failed, using cache", e);
@@ -808,7 +815,14 @@ async function syncPipelineFromServer() {
     const lite = await apiLoadPipeline(
       state._allDealsLoaded
         ? { lite: true, all: true }
-        : { lite: true, page: pg?.page || 1, perPage: pg?.perPage || 100 },
+        : {
+          lite: true,
+          page: pg?.page || 1,
+          perPage: pg?.perPage || 100,
+          listQuery: typeof buildDealsListQueryParams === "function"
+            ? buildDealsListQueryParams()
+            : { sortKey: "amount", sortDir: "desc" },
+        },
     );
     if (!lite) throw new Error("Пустой ответ сервера");
     const localCount = (cached?.deals || []).length;

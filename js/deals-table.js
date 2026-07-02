@@ -855,12 +855,13 @@ function updateDealsTableBody(deals) {
   const tbody = document.getElementById("deals-tbody");
   const meta = document.getElementById("deals-table-meta");
   if (!tbody) return;
-  const filtered = sortDealsTableRows(applyDealsTableFilters(deals));
-  tbody.innerHTML = filtered.map(renderDealsTableRow).join("");
+  let rows = applyDealsTableFilters(deals);
+  if (!state?.dealsServerFiltered) rows = sortDealsTableRows(rows);
+  tbody.innerHTML = rows.map(renderDealsTableRow).join("");
   const total = state?.dealsPagination?.total ?? deals.length;
   const pg = state?.dealsPagination;
   if (meta) {
-    let text = `Показано ${filtered.length} из ${total}`;
+    let text = `Показано ${rows.length} из ${total}`;
     if (pg && pg.totalPages > 1) text += ` · стр. ${pg.page}/${pg.totalPages}`;
     meta.textContent = text;
   }
@@ -1173,11 +1174,7 @@ function bindDealsTableEvents() {
         dealsTableSort = { key, dir: (DEALS_TABLE_COLS.find(c => c.key === key)?.num ? "desc" : "asc") };
       }
       updateDealsTableSortMarks();
-      if (window.ITMEN_API?.backend === "pocketbase" && hasDealsListServerQuery(buildDealsListQueryParams())) {
-        reloadDealsFromServer(state?.dealsPagination?.page || 1);
-      } else {
-        updateDealsTableBody(getEnrichedDeals());
-      }
+      reloadDealsFromServer(state?.dealsPagination?.page || 1);
       return;
     }
 
@@ -1450,12 +1447,8 @@ function buildDealsListQueryParams() {
   };
 }
 
-function hasDealsListServerQuery(lq) {
-  if (!lq) return false;
-  if (lq.q) return true;
-  if (lq.mine) return true;
-  if (lq.filters) return true;
-  return false;
+function hasDealsListServerQuery() {
+  return window.ITMEN_API?.backend === "pocketbase";
 }
 
 async function reloadDealsFromServer(page) {
@@ -1467,7 +1460,6 @@ async function reloadDealsFromServer(page) {
   const pg = state?.dealsPagination || { perPage: 100, page: 1 };
   const target = page || pg.page || 1;
   const listQuery = buildDealsListQueryParams();
-  const useServerFilter = hasDealsListServerQuery(listQuery);
   const meta = document.getElementById("deals-table-meta");
   if (meta) meta.textContent = "Загрузка…";
   try {
@@ -1475,7 +1467,7 @@ async function reloadDealsFromServer(page) {
       lite: true,
       page: target,
       perPage: pg.perPage || 100,
-      listQuery: useServerFilter ? listQuery : undefined,
+      listQuery,
     });
     if (!loaded) return;
     state.deals = loaded.deals;
@@ -1483,7 +1475,6 @@ async function reloadDealsFromServer(page) {
     state.dealsListQuery = loaded.dealsListQuery;
     state.dealsServerFiltered = !!loaded.dealsServerFiltered;
     state._allDealsLoaded = false;
-    if (!useServerFilter) delete state.dealsListQuery;
     if (typeof persistStateCache === "function") persistStateCache(state);
     try { localStorage.setItem("itmen_pipeline", JSON.stringify(state)); } catch (_) {}
     updateDealsTableBody(getEnrichedDeals());
@@ -1496,12 +1487,10 @@ async function reloadDealsFromServer(page) {
 
 function onDealsFilterChanged(page) {
   if (window.ITMEN_API?.backend === "pocketbase") {
-    if (hasDealsListServerQuery(buildDealsListQueryParams()) || state?.dealsServerFiltered) {
-      scheduleDealsServerReload(page || 1);
-      if (typeof syncDealsReportHashFromTable === "function") syncDealsReportHashFromTable();
-      if (typeof renderDealsFilterBanner === "function") renderDealsFilterBanner();
-      return;
-    }
+    scheduleDealsServerReload(page || 1);
+    if (typeof syncDealsReportHashFromTable === "function") syncDealsReportHashFromTable();
+    if (typeof renderDealsFilterBanner === "function") renderDealsFilterBanner();
+    return;
   }
   state.dealsServerFiltered = false;
   updateDealsTableBody(getEnrichedDeals());
@@ -1545,28 +1534,7 @@ function renderDealsPagination() {
 }
 
 async function loadDealsPage(page) {
-  if (hasDealsListServerQuery(buildDealsListQueryParams())) {
-    return reloadDealsFromServer(page);
-  }
-  const pg = state?.dealsPagination || { perPage: 100, totalPages: 1 };
-  const target = Math.max(1, Math.min(page, pg.totalPages || page));
-  const meta = document.getElementById("deals-table-meta");
-  if (meta) meta.textContent = "Загрузка…";
-  try {
-    const loaded = await apiLoadPipeline({ lite: true, page: target, perPage: pg.perPage || 100 });
-    if (!loaded) return;
-    state.deals = loaded.deals;
-    state.dealsPagination = loaded.dealsPagination;
-    state._allDealsLoaded = false;
-    if (typeof persistStateCache === "function") persistStateCache(state);
-    try { localStorage.setItem("itmen_pipeline", JSON.stringify(state)); } catch (_) {}
-    updateDealsTableBody(typeof getEnrichedDeals === "function" ? getEnrichedDeals() : state.deals);
-    renderDealsPagination();
-    if (typeof updateDealCountBadge === "function") updateDealCountBadge();
-    document.querySelector(".deals-table-shell")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  } catch (e) {
-    if (typeof showToast === "function") showToast(e.message || "Ошибка загрузки страницы");
-  }
+  return reloadDealsFromServer(page);
 }
 
 window.renderDealsPagination = renderDealsPagination;
