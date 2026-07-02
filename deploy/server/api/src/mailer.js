@@ -1,5 +1,20 @@
 "use strict";
 
+const fs = require("fs");
+
+function loadEnv() {
+  if (process.env.SMTP_HOST && process.env.SMTP_USER) return;
+  const path = "/opt/itmen-pipeline/.env";
+  if (!fs.existsSync(path)) return;
+  for (const line of fs.readFileSync(path, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const [k, v] = trimmed.split("=", 2);
+    if (!process.env[k]) process.env[k] = v;
+  }
+}
+loadEnv();
+
 /**
  * Email-уведомления (опционально).
  * Задайте SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM в /opt/itmen-pipeline/.env
