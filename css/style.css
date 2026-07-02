@@ -788,6 +788,15 @@ body.page-deals-active .deals-table-hint {
   margin-bottom: .75rem;
 }
 .deals-table-meta { margin-left: auto; font-size: .78rem; color: var(--muted); }
+.deals-pagination {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+  margin-top: .75rem;
+  padding: .5rem 0;
+}
+.deals-pagination-info { font-size: .78rem; margin-left: .5rem; }
 
 .deals-table-shell {
   background: var(--surface);
@@ -2646,6 +2655,7 @@ body.col-resizing * { cursor: col-resize !important; }
 .req-tab-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: .75rem; flex-wrap: wrap; }
 .req-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; justify-content: flex-end; }
 .req-pct { font-weight: 700; color: var(--navy); }
+input.req-pct-auto { background: #f0f9ff; border-color: #bae6fd; }
 .req-table-wrap { overflow-x: auto; margin-bottom: .75rem; }
 .req-table .req-feas.req-feas-missing {
   border-color: #ef4444;

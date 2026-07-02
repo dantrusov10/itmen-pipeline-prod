@@ -42,7 +42,7 @@ async function ensureAuth() {
   return authPromise;
 }
 
-async function pbFetch(path, { method = "GET", body = null, auth = true, headers: extra = {} } = {}) {
+async function pbFetch(path, { method = "GET", body = null, auth = true, headers: extra = {} } = {}, _retried = false) {
   const headers = { ...extra };
   if (!headers["Content-Type"] && body != null && typeof body === "string") {
     headers["Content-Type"] = "application/json";
@@ -59,11 +59,23 @@ async function pbFetch(path, { method = "GET", body = null, auth = true, headers
     data = text ? JSON.parse(text) : {};
   } catch (_) {}
   if (!res.ok) {
+    if (auth && res.status === 401 && !_retried) {
+      token = null;
+      authPromise = null;
+      return pbFetch(path, { method, body, auth, headers: extra }, true);
+    }
     const err = new Error(data.message || res.statusText || "PocketBase error");
     err.status = res.status;
     throw err;
   }
   return data;
+}
+
+async function listPage(collection, { page = 1, perPage = 100, filter, sort } = {}) {
+  const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+  if (filter) params.set("filter", filter);
+  if (sort) params.set("sort", sort);
+  return pbFetch(`/api/collections/${collection}/records?${params}`);
 }
 
 async function listAll(collection, opts = {}) {
@@ -151,6 +163,7 @@ async function uploadRecord(collection, fields, { file, fileName, fileField = "f
 module.exports = {
   ensureAuth,
   listAll,
+  listPage,
   findOne,
   createRecord,
   updateRecord,

@@ -605,10 +605,7 @@ async function getKpPrefill(dealId, deal) {
   if (pu) {
     managerEmail = pu.email || "";
     const prof = await findOne("user_profiles", `user_id="${String(pu.id).replace(/"/g, '\\"')}"`);
-    if (prof) {
-      managerPhone = prof.phone || "";
-      if (prof.email) managerEmail = prof.email;
-    }
+    if (prof) managerPhone = prof.phone || "";
   }
   const partner = (deal && deal.partner) || "";
   const partnerName = partner && partner !== "Нет партнёра" ? partner : "";

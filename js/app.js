@@ -695,13 +695,31 @@ async function loadDealNextTaskDue() {
 }
 window.loadDealNextTaskDue = loadDealNextTaskDue;
 
+async function ensureAllDealsLoaded() {
+  if (state._allDealsLoaded) return true;
+  const pag = state.dealsPagination;
+  if (!pag || pag.total <= (state.deals?.length || 0)) {
+    state._allDealsLoaded = true;
+    return true;
+  }
+  const loaded = await apiLoadPipeline({ lite: true, all: true });
+  if (!loaded?.deals?.length) return false;
+  state.deals = loaded.deals;
+  state._allDealsLoaded = true;
+  persistStateCache(state);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+  invalidateMetricsCache();
+  return true;
+}
+window.ensureAllDealsLoaded = ensureAllDealsLoaded;
+
 async function bootstrapPipelineFromServer() {
-  const label = window.ITMEN_API?.backend === "pocketbase" ? "сервера" : "Google Таблицы";
+  const label = "сервера";
   showSyncBanner(`⟳ Загрузка данных с ${label}…`, "sync");
-  const cached = loadStateLocal();
+  const cached = window.ITMEN_API?.backend === "pocketbase" ? null : loadStateLocal();
   let lite;
   try {
-    lite = await apiLoadPipeline({ lite: true });
+    lite = await apiLoadPipeline({ lite: true, page: 1, perPage: 100 });
   } catch (e) {
     if (cached?.deals?.length) {
       console.warn("pipeline load failed, using cache", e);
@@ -734,9 +752,12 @@ async function bootstrapPipelineFromServer() {
     throw new Error("Пустой ответ сервера");
   }
   const localCount = (cached?.deals || []).length;
-  const serverCount = lite.deals.length;
-  const replaced = shouldReplaceLocalWithServer(cached, lite);
-  state = await loadPipelineAfterServerCount(cached, lite, replaced);
+  const serverCount = lite.dealsPagination?.total ?? lite.deals.length;
+  const replaced = cached ? shouldReplaceLocalWithServer(cached, lite) : false;
+  state = replaced || !cached
+    ? migrateState(lite)
+    : await loadPipelineAfterServerCount(cached, lite, replaced);
+  state._allDealsLoaded = !lite.dealsPagination || serverCount <= lite.deals.length;
   let healedCompetitors = false;
   if (await healStrippedCompetitorData()) {
     updateDealCountBadge();
@@ -760,12 +781,18 @@ async function bootstrapPipelineFromServer() {
   } else if (!healedCompetitors) {
     clearSyncBanner();
   }
+  if (!state._allDealsLoaded && state.dealsPagination?.total > state.deals.length) {
+    ensureAllDealsLoaded().then(() => {
+      updateDealCountBadge();
+      if (activePage === "panel") renderPanel(getDashboardMetrics());
+    }).catch(e => console.warn("ensureAllDealsLoaded:", e));
+  }
 }
 
 function updateDealCountBadge() {
   const n = typeof isPresaleWorkspace === "function" && isPresaleWorkspace()
     ? getEnrichedDeals().length
-    : (state?.deals || []).length;
+    : (state?.dealsPagination?.total ?? (state?.deals || []).length);
   const title = document.getElementById("page-title");
   if (!title) return;
   const base = PAGES[activePage]?.title || "Пайплайн";
@@ -777,12 +804,18 @@ async function syncPipelineFromServer() {
   try {
     showSyncBanner("⟳ Обновление данных с сервера…", "sync");
     const cached = state;
-    const lite = await apiLoadPipeline({ lite: true });
+    const pg = cached?.dealsPagination;
+    const lite = await apiLoadPipeline(
+      state._allDealsLoaded
+        ? { lite: true, all: true }
+        : { lite: true, page: pg?.page || 1, perPage: pg?.perPage || 100 },
+    );
     if (!lite) throw new Error("Пустой ответ сервера");
     const localCount = (cached?.deals || []).length;
-    const serverCount = (lite?.deals || []).length;
+    const serverCount = lite.dealsPagination?.total ?? (lite?.deals || []).length;
     const replaced = shouldReplaceLocalWithServer(cached, lite);
     state = await loadPipelineAfterServerCount(cached, lite, replaced);
+    state._allDealsLoaded = state._allDealsLoaded || !lite.dealsPagination || serverCount <= (lite.deals?.length || 0);
     const changed = replaced || isServerNewer(state, cached);
     persistStateCache(state);
     if (typeof syncCrmOwnersList === "function") await syncCrmOwnersList();
@@ -821,12 +854,12 @@ async function syncPipelineFromServer() {
 
 async function forceReloadFromServer() {
   if (!window.ITMEN_API?.enabled) {
-    alert("Сервер не подключён. Проверьте js/gas-config.js");
+    alert("Сервер не подключён.");
     return;
   }
   try {
     showSyncBanner("⟳ Загрузка с сервера…", "sync");
-    const loaded = await apiLoadPipeline({ lite: true });
+    const loaded = await apiLoadPipeline({ lite: true, all: true });
     if (!loaded?.deals?.length) {
       const cached = loadStateLocal();
       if (cached?.deals?.length) {
@@ -846,6 +879,7 @@ async function forceReloadFromServer() {
       throw new Error("Сервер вернул пустой пайплайн");
     }
     state = migrateState(loaded);
+    state._allDealsLoaded = true;
     persistStateCache(state);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
     invalidateMetricsCache();
@@ -873,6 +907,7 @@ async function forceReloadFromServer() {
 }
 
 function loadStateLocal() {
+  if (window.ITMEN_API?.backend === "pocketbase") return null;
   try {
     const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PIPELINE_CACHE_KEY);
     if (saved) return migrateState(JSON.parse(saved));
@@ -1065,9 +1100,12 @@ function renderActivePage(dealId) {
       renderDealPage(dealId || activeDealId || "");
     }
     else if (activePage === "kanban") {
-      if (typeof renderActiveKanban === "function") renderActiveKanban();
-      else if (presaleWs && typeof renderPresaleKanban === "function") renderPresaleKanban();
-      else if (typeof renderKanban === "function") renderKanban();
+      (async () => {
+        try { await ensureAllDealsLoaded(); } catch (_) {}
+        if (typeof renderActiveKanban === "function") renderActiveKanban();
+        else if (presaleWs && typeof renderPresaleKanban === "function") renderPresaleKanban();
+        else if (typeof renderKanban === "function") renderKanban();
+      })();
     }
     else if (activePage === "calendar" && typeof renderCalendar === "function") renderCalendar();
     else if (activePage === "reports" && typeof renderReports === "function") renderReports();
@@ -1443,11 +1481,9 @@ function renderPanel(m) {
 
     <div class="note">${window.ITMEN_API?.backend === "pocketbase"
       ? "Данные в PocketBase · автосохранение при изменениях."
-      : window.ITMEN_API?.backend === "gas"
-      ? "Данные в Google Таблице · автосохранение при изменениях."
       : window.ITMEN_API?.enabled
         ? "Данные на сервере · автосохранение при изменениях."
-        : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
+        : "Данные сохраняются локально в браузере."} Каталог вендоров: ${(typeof catalogCountLabel === "function" ? catalogCountLabel() : (window.catalogCountLabel?.() ?? "—"))} позиций.</div>`;
 
   if (typeof bindDynamicsEvents === "function") bindDynamicsEvents();
   if (typeof scheduleDynamicsLoad === "function") scheduleDynamicsLoad();
@@ -1934,7 +1970,14 @@ function bindDealPassportExtras(root) {
   bindPassportMoneyInputs(root);
   bindIndustryMultiselect(root);
   bindPresaleOwnerAutoTab(root);
+  if (typeof bindRequirementPctInputs === "function") bindRequirementPctInputs(root);
   if (typeof bindAutoGrowTextareas === "function") bindAutoGrowTextareas(root);
+  const dealId = typeof activeDealId !== "undefined" && activeDealId
+    ? activeDealId
+    : (typeof editingDealIdx !== "undefined" && editingDealIdx != null ? state?.deals?.[editingDealIdx]?.id : null);
+  if (dealId && typeof hydrateDealRequirementPct === "function") {
+    hydrateDealRequirementPct(dealId);
+  }
 }
 
 function buildDealPassportHtml(d, editable, suggestion, opts = {}) {
@@ -1950,7 +1993,7 @@ function buildDealPassportHtml(d, editable, suggestion, opts = {}) {
         </div>
         <div><label>Клиент</label><input id="f-customer" value="${escapeHtml(d.customer)}" placeholder="Название компании"></div>
         <div><label>Отрасль</label>${renderIndustryMultiselect(L.industries, d.industry)}</div>
-        <div><label>Владелец</label>${select("f-owner", ownerSelectOptions(d.owner), d.owner || ownerSelectOptions()[0] || "")}</div>
+        <div><label>Владелец</label>${ownerPassportSelect(d)}</div>
         ${(() => {
           const presale = typeof normalizePresaleBlock === "function" ? normalizePresaleBlock(d?.presale, d) : (d?.presale || {});
           const owners = state?.lists?.presale_owners || (typeof getPresaleStaffNames === "function" ? getPresaleStaffNames() : []);
@@ -2160,7 +2203,7 @@ function markScoreOverride(key) {
 function emptyDeal() {
   const defaultOwner = window.ITMEN_AUTH?.user?.managerName
     || window.ITMEN_AUTH?.user?.displayName
-    || ownerSelectOptions()[0] || "";
+    || "";
   return {
     id: previewDealId(),
     customer: "",
@@ -2370,7 +2413,9 @@ async function saveDealFromDomAsync(opts = {}) {
   if (window.ITMEN_API?.backend === "pocketbase") {
     try {
       const placeholderId = editingDealIdx == null ? deal.id : null;
-      const res = await apiSaveDeal(deal);
+      const presaleOwner = field("f-passport-presale-owner", "");
+      const presalePatch = presaleOwner ? { owner: presaleOwner } : undefined;
+      const res = await apiSaveDeal(deal, { presalePatch });
         if (res.deal) {
         const migrated = migrateDeal(res.deal);
         delete migrated._draft;
@@ -2388,24 +2433,8 @@ async function saveDealFromDomAsync(opts = {}) {
       }
       const n = res?.auditRows ?? 0;
       showToast(`Сохранено (PocketBase) · аудит: ${n} строк`);
-      const presaleOwner = field("f-passport-presale-owner", "");
-      if (presaleOwner && deal.id && typeof apiSavePresale === "function") {
-        try {
-          const presaleRes = await apiSavePresale(deal.id, { owner: presaleOwner }, { syncSales: false });
-          if (presaleRes?.presale) {
-            const i = state.deals.findIndex(x => x.id === deal.id);
-            if (i >= 0) {
-              state.deals[i].presale = presaleRes.presale;
-              deal = state.deals[i];
-              persistStateCache(state);
-            }
-          }
-        } catch (e) {
-          console.warn("presale owner save:", e);
-        }
-      }
     } catch (e) {
-      if (e.status === 409) {
+      if (e.status === 409 || e.status === 422) {
         alert((e.message || "Конфликт версии данных") + "\n\nОбновите страницу и повторите.");
         if (typeof loadPipeline === "function") {
           try { await loadPipeline({ force: true }); } catch (_) { /* ignore */ }
@@ -2505,6 +2534,14 @@ async function deleteDealAsync(idx) {
   }
 }
 
+function ownerPassportSelect(d) {
+  const cur = String(d?.owner || "").trim();
+  const opts = ownerSelectOptions(cur);
+  const rows = [`<option value=""${!cur ? " selected" : ""}>Не назначен</option>`]
+    .concat(opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? " selected" : ""}>${escapeHtml(o)}</option>`));
+  return `<select id="f-owner">${rows.join("")}</select>`;
+}
+
 function select(id, options, value, onchange) {
   const oc = onchange ? ` onchange="${onchange}"` : "";
   return `<select id="${id}"${oc}>${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}</select>`;
@@ -2555,9 +2592,10 @@ async function importJson(input) {
 
 async function reloadPipelineFromServer() {
   if (!window.ITMEN_API?.enabled) return;
-  const loaded = await apiLoadPipeline({ lite: false });
+  const loaded = await apiLoadPipeline({ lite: false, all: true });
   if (loaded) {
     state = migrateState(loaded);
+    state._allDealsLoaded = true;
     persistStateCache(state);
     invalidateMetricsCache();
     renderAll();

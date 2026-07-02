@@ -316,6 +316,9 @@ function pctToTechnicalScore(pct) {
 }
 
 function requirementPctValue(deal, tr, kind) {
+  if (typeof effectiveRequirementPct === "function") {
+    return effectiveRequirementPct(deal, kind);
+  }
   const isPilot = kind === "pilot";
   const dealPct = isPilot ? deal?.pilotFeasibilityPct : deal?.productFeasibilityPct;
   const trPct = isPilot
@@ -328,7 +331,7 @@ function requirementPctValue(deal, tr, kind) {
     if (n === 0 && count > 0) return null;
     return n;
   };
-  return pick(dealPct) ?? pick(trPct);
+  return pick(trPct) ?? pick(dealPct);
 }
 
 function avgRequirementPct(tr, deal) {
@@ -502,23 +505,29 @@ function sanePct(v) {
 
 function enrichDeal(deal, scoringOpts) {
   const d = migrateDeal(deal);
-  const score = calcDealScore(d.scores, d.manualProb, scoringOpts);
+  const score = d._tableScore != null ? d._tableScore : calcDealScore(d.scores, d.manualProb, scoringOpts);
   const computedProb = calcComputedProb(score, d.commitStatus, d.budgetStatus);
   const prob = d.manualProb > 0 ? d.manualProb : (computedProb ?? 0);
-  const category = calcCategory(score, d.commitStatus, d.budgetStatus, scoringOpts);
+  const category = (d._tableCategory != null && d._tableCategory !== "")
+    ? d._tableCategory
+    : calcCategory(score, d.commitStatus, d.budgetStatus, scoringOpts);
   const daysSince = daysBetween(d.lastUpdate);
   const taskDueDate = getDealTaskDue(d.id) || d.taskDue || "";
   const daysTo = daysUntil(taskDueDate);
   const quality = calcDataQuality(d);
   const riskFlag = calcRiskFlag(d, category, daysSince, daysTo);
   const expectedAmount = Number(d.amount) || 0;
-  const weighted = weightedAmount(expectedAmount, score, category);
+  const weighted = d._tableWeighted != null
+    ? d._tableWeighted
+    : weightedAmount(expectedAmount, score, category);
   return {
     ...d, score, computedProb, prob, category, daysSince, daysTo, taskDue: taskDueDate, quality, riskFlag, weighted,
     expectedAmount,
     commitLabel: commitLabel(d.commitStatus),
-    projectCompliancePct: sanePct(d.techResearch?.productRequirementsPct),
-    pilotCompliancePct: sanePct(d.techResearch?.pilotRequirementsPct),
+    projectCompliancePct: typeof effectiveRequirementPct === "function"
+      ? effectiveRequirementPct(d, "product") : sanePct(d.techResearch?.productRequirementsPct),
+    pilotCompliancePct: typeof effectiveRequirementPct === "function"
+      ? effectiveRequirementPct(d, "pilot") : sanePct(d.techResearch?.pilotRequirementsPct),
   };
 }
 

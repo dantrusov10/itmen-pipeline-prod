@@ -2,6 +2,7 @@
 
 const {
   listAll,
+  listPage,
   findOne,
   createRecord,
   updateRecord,
@@ -10,6 +11,11 @@ const {
 } = require("./pb-client");
 const { mergePresaleIntoDeals } = require("./presale-data");
 const { loadSalesLossMetaMap, mergeSalesLossExtraIntoDeal, setSalesLossExtra } = require("./sales-loss-meta");
+const { mergeDealPreserveChildren, detectDataLoss } = require("./deal-merge");
+const { snapshotDealBeforeSave, logDataLossAlerts } = require("./deal-snapshots");
+const { syncDealChildren } = require("./deal-children-sync");
+const { hasActiveListQuery, filterAndPaginateDeals, parseListQuery } = require("./deals-list-query");
+const { calcDealScore, calcCategory, isWeightedDeal } = require("./metrics");
 
 function isoDate(val) {
   if (!val) return null;
@@ -244,8 +250,26 @@ function assembleDealChildren(deal, children) {
   };
 }
 
+function enrichDealTableFields(d) {
+  const score = calcDealScore(d.scores, d.manualProb);
+  const category = calcCategory(score, d.commitStatus, d.budgetStatus);
+  return {
+    ...d,
+    _tableScore: score,
+    _tableCategory: category,
+    _tableWeighted: isWeightedDeal(score, category) ? (Number(d.amount) || 0) : 0,
+    _tablePassportPct: Math.max(
+      Number(d.pilotFeasibilityPct) || 0,
+      Number(d.productFeasibilityPct) || 0,
+      Number(d.techResearch?.pilotRequirementsPct) || 0,
+      Number(d.techResearch?.productRequirementsPct) || 0,
+    ) || null,
+  };
+}
+
 function stripLiteDeal(d) {
-  const copy = JSON.parse(JSON.stringify(d));
+  const enriched = enrichDealTableFields(d);
+  const copy = JSON.parse(JSON.stringify(enriched));
   if (copy.pains && String(copy.pains).trim()) copy.hasPains = true;
   delete copy.pains;
   delete copy.riskComment;
@@ -309,15 +333,58 @@ async function loadChildrenByDeal() {
   return byDeal;
 }
 
-async function loadPipelineState({ lite = false, dealId = null, includeArchived = false } = {}) {
-  const [metaRow, listRows, scoringRows, dealRows] = await Promise.all([
+async function loadPipelineState({
+  lite = false,
+  dealId = null,
+  includeArchived = false,
+  page = null,
+  perPage = 100,
+  all = false,
+  listQuery = null,
+  user = null,
+} = {}) {
+  const parsedListQuery = listQuery ? parseListQuery(listQuery) : null;
+  const filteredMode = !dealId && !all && parsedListQuery && hasActiveListQuery(parsedListQuery);
+  const paginated = !dealId && !all && !filteredMode && page != null;
+
+  const [metaRow, listRows, scoringRows, dealResult] = await Promise.all([
     findOne("pipeline_meta", 'slug="main"'),
     listAll("list_items", { sort: "sort_order" }),
     listAll("scoring_criteria", { sort: "sort_order" }),
-    dealId
-      ? listAll("deals", { filter: `deal_id="${dealId.replace(/"/g, '\\"')}"` })
-      : listAll("deals", { sort: "deal_id" }),
+    (async () => {
+      if (dealId) {
+        const rows = await listAll("deals", { filter: `deal_id="${dealId.replace(/"/g, '\\"')}"` });
+        return { rows, pagination: null };
+      }
+      if (filteredMode) {
+        const rows = await listAll("deals", { sort: "deal_id" });
+        return { rows, pagination: null };
+      }
+      if (paginated) {
+        const archivedFilter = includeArchived ? "" : '(archived=false || archived="" || archived=null)';
+        const res = await listPage("deals", {
+          page: Math.max(1, Number(page) || 1),
+          perPage: Math.min(200, Math.max(1, Number(perPage) || 100)),
+          sort: "deal_id",
+          filter: archivedFilter || undefined,
+        });
+        return {
+          rows: res.items || [],
+          pagination: {
+            page: res.page || 1,
+            perPage: res.perPage || perPage,
+            total: res.totalItems || 0,
+            totalPages: res.totalPages || 1,
+          },
+        };
+      }
+      const rows = await listAll("deals", { sort: "deal_id" });
+      return { rows, pagination: null };
+    })(),
   ]);
+
+  const dealRows = dealResult.rows;
+  const dealsPagination = dealResult.pagination;
 
   if (dealId && !dealRows.length) return null;
 
@@ -325,8 +392,9 @@ async function loadPipelineState({ lite = false, dealId = null, includeArchived 
     ? dealRows
     : dealRows.filter(row => !row.archived);
 
+  const pbIds = activeRows.map(r => r.id);
   const childrenByDeal = lite && !dealId
-    ? await loadLiteChildren()
+    ? (paginated ? await loadLiteChildrenForDealIds(pbIds) : await loadLiteChildren())
     : await loadChildrenByDeal();
 
   const deals = activeRows.map(row => {
@@ -355,8 +423,51 @@ async function loadPipelineState({ lite = false, dealId = null, includeArchived 
     _savedBy: meta.saved_by || "web",
     _dataEpoch: meta.data_epoch || 1,
   };
+  if (filteredMode) {
+    const queryPayload = {
+      ...parsedListQuery,
+      page: parsedListQuery.page || page || 1,
+      perPage: parsedListQuery.perPage || perPage || 100,
+    };
+    const result = filterAndPaginateDeals(state.deals, queryPayload, user);
+    state.deals = result.deals;
+    state.dealsPagination = result.pagination;
+    state.dealsListQuery = result.listQuery;
+    state.dealsServerFiltered = true;
+    return state;
+  }
+  if (dealsPagination) state.dealsPagination = dealsPagination;
 
   return state;
+}
+
+async function loadLiteChildrenForDealIds(pbIds) {
+  if (!pbIds.length) return {};
+  const byDeal = {};
+  const ensure = id => {
+    if (!byDeal[id]) {
+      byDeal[id] = { scores: [], risks: [], tech: [], seeking: [], competitors: [] };
+    }
+    return byDeal[id];
+  };
+  const chunkSize = 25;
+  for (let i = 0; i < pbIds.length; i += chunkSize) {
+    const chunk = pbIds.slice(i, i + chunkSize);
+    const filter = chunk.map(id => `deal="${id}"`).join("||");
+    const [scores, risks, tech, seeking, competitors] = await Promise.all([
+      listAll("deal_scores", { filter }),
+      listAll("deal_risks", { filter }),
+      listAll("deal_tech", { filter }),
+      listAll("deal_seeking_segments", { filter }),
+      listAll("deal_competitors", { filter }),
+    ]);
+    for (const row of scores) ensure(row.deal).scores.push(row);
+    for (const row of risks) ensure(row.deal).risks.push(row);
+    for (const row of tech) ensure(row.deal).tech.push(row);
+    for (const row of seeking) ensure(row.deal).seeking.push(row);
+    for (const row of competitors) ensure(row.deal).competitors.push(row);
+  }
+  return byDeal;
 }
 
 async function loadLiteChildren() {
@@ -525,27 +636,60 @@ async function importDealChildren(pbDealId, d) {
   }
 }
 
-async function upsertDeal(d) {
+async function upsertDeal(d, opts = {}) {
   const existing = await findOne("deals", `deal_id="${String(d.id).replace(/"/g, '\\"')}"`);
-  const row = mapDealRow(d);
+  const savedBy = opts.savedBy || d._savedBy || "upsert";
+  const source = opts.source || savedBy;
+  let toWrite = d;
+  let oldFull = null;
+
+  if (existing) {
+    oldFull = await loadPipelineState({ dealId: d.id });
+    if (oldFull && !opts.replaceChildren) {
+      toWrite = mergeDealPreserveChildren(oldFull, d);
+    }
+    if (oldFull) {
+      const lossAlerts = detectDataLoss(oldFull, toWrite);
+      if (lossAlerts.length) {
+        const err = new Error(
+          `Сохранение отклонено: ${lossAlerts.map(a => a.kind).join(", ")}. Обновите страницу.`,
+        );
+        err.status = 422;
+        err.alerts = lossAlerts;
+        throw err;
+      }
+      await snapshotDealBeforeSave(d.id, oldFull, { savedBy, source });
+    }
+  }
+
+  const row = mapDealRow(toWrite);
   let pbId;
   if (existing) {
     pbId = existing.id;
     await updateRecord("deals", pbId, row);
-    await deleteDealChildren(pbId);
+    await syncDealChildren(pbId, toWrite);
   } else {
     const created = await createRecord("deals", row);
     pbId = created.id;
+    await syncDealChildren(pbId, toWrite);
   }
-  await importDealChildren(pbId, d);
-  if (d.id) {
-    await setSalesLossExtra(d.id, {
-      lossCompetitorKey: d.lossCompetitorKey,
-      lossSolutionSegments: d.lossSolutionSegments,
-      lossItmenDiscoveryOnly: d.lossItmenDiscoveryOnly,
-      lossOtherComment: d.lossOtherComment,
+  if (toWrite.id) {
+    await setSalesLossExtra(toWrite.id, {
+      lossCompetitorKey: toWrite.lossCompetitorKey,
+      lossSolutionSegments: toWrite.lossSolutionSegments,
+      lossItmenDiscoveryOnly: toWrite.lossItmenDiscoveryOnly,
+      lossOtherComment: toWrite.lossOtherComment,
     });
   }
+
+  if (oldFull) {
+    const savedAfter = await loadPipelineState({ dealId: d.id });
+    const alerts = detectDataLoss(oldFull, savedAfter);
+    if (alerts.length) {
+      await logDataLossAlerts(d.id, oldFull, savedAfter, alerts, { savedBy, source });
+    }
+  }
+
   return pbId;
 }
 
@@ -629,7 +773,13 @@ async function dealIdExists(dealId) {
   return Boolean(existing);
 }
 
-async function saveSingleDeal(deal, { savedBy = "web", isNew = false } = {}) {
+async function saveSingleDeal(deal, {
+  savedBy = "web",
+  isNew = false,
+  skipAudit = false,
+  saveSource = "",
+  replaceChildren = false,
+} = {}) {
   let oldDeal = null;
   let created = isNew;
 
@@ -650,9 +800,13 @@ async function saveSingleDeal(deal, { savedBy = "web", isNew = false } = {}) {
     created = !oldDeal;
   }
 
-  await upsertDeal(deal);
+  const source = saveSource || savedBy;
+  await upsertDeal(deal, { savedBy, source, replaceChildren });
   await touchMetaAfterDealSave(savedBy);
   const saved = await loadPipelineState({ dealId: deal.id });
+  if (!skipAudit) {
+    await writeDealAudit({ savedBy: source, oldDeal, newDeal: saved, isNew: created });
+  }
   const { nextId } = await computeNextDealId();
   return { saved, oldDeal, isNew: created, nextId };
 }
@@ -663,7 +817,10 @@ async function savePipelineState(mergedState, { deletedDealIds = [] } = {}) {
   }
   for (const deal of mergedState.deals || []) {
     if (!deal?.id) continue;
-    await upsertDeal(deal);
+    await upsertDeal(deal, {
+      savedBy: mergedState._savedBy || "pipeline-bulk",
+      source: "pipeline-bulk",
+    });
   }
 
   const meta = await findOne("pipeline_meta", 'slug="main"');

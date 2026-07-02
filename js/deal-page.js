@@ -260,6 +260,7 @@ async function switchDealPageLeftTab(tab) {
       if (typeof bindPassportMoneyInputs === "function") bindPassportMoneyInputs(body);
       if (typeof bindAutoGrowTextareas === "function") bindAutoGrowTextareas(body);
     }
+    if (dealId && typeof hydrateDealRequirementPct === "function") hydrateDealRequirementPct(dealId);
     bindDealPageDirtyTracking();
     resetDealPageDirty();
     bindDealPageHeaderStage();
@@ -538,7 +539,7 @@ async function loadDealPageContent(dealId) {
 
   editingDealIdx = idx;
   let d = migrateDeal(state.deals[idx]);
-  if (d?.id && needsFullDeal(d) && window.ITMEN_API?.enabled) {
+  if (d?.id && window.ITMEN_API?.enabled) {
     try {
       await ensureArchitectureLoaded();
       const full = await apiLoadDeal(d.id);
@@ -546,7 +547,6 @@ async function loadDealPageContent(dealId) {
       if (full) {
         state.deals[idx] = migrateDeal(full);
         d = state.deals[idx];
-        persistStateCache(state);
       }
     } catch (e) {
       console.warn("loadDealPage:", e);

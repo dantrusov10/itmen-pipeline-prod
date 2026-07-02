@@ -3,6 +3,7 @@ const PIPELINE_CACHE_KEY = "itmen_pipeline_v2";
 const PIPELINE_CACHE_META = "itmen_pipeline_meta_v1";
 
 function persistStateCache(s) {
+  if (window.ITMEN_API?.backend === "pocketbase") return;
   if (!s) return;
   try {
     localStorage.setItem(PIPELINE_CACHE_KEY, JSON.stringify(s));
@@ -146,15 +147,7 @@ function clearSyncBanner() {
 }
 
 function showEnvironmentBanner() {
-  const cfg = window.ITMEN_GAS_CONFIG || {};
-  const env = String(cfg.environment || "production").toLowerCase();
-  if (env === "production") return;
-  const label = cfg.label || env.toUpperCase();
-  const pages = cfg.pagesUrl ? ` · <a href="${cfg.pagesUrl}" target="_blank" rel="noopener">${cfg.pagesUrl}</a>` : "";
-  showSyncBanner(
-    `⚠ <strong>${label}</strong> — тестовая копия. Менеджеры работают в PROD.${pages}`,
-    "error"
-  );
+  /* legacy no-op */
 }
 
 function renderAppSkeleton() {

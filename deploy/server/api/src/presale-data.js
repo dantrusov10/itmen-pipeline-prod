@@ -183,36 +183,17 @@ function resolvePresaleStageFromDeal(deal, presale) {
 }
 
 async function loadPresaleMap() {
-  if (await presaleCollectionAvailable()) {
-    return loadPresaleMapFromCollection();
+  if (!(await presaleCollectionAvailable())) {
+    throw new Error("Коллекция presale_deals недоступна");
   }
-  try {
-    const row = await findOne("pipeline_meta", `slug="${META_SLUG}"`);
-    if (!row?.focus_goal) return {};
-    const parsed = JSON.parse(row.focus_goal);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return loadPresaleMapFromCollection();
 }
 
 async function savePresaleMap(map) {
-  if (await presaleCollectionAvailable()) {
-    await savePresaleMapToCollection(map);
-    return;
+  if (!(await presaleCollectionAvailable())) {
+    throw new Error("Коллекция presale_deals недоступна");
   }
-  const body = { focus_goal: JSON.stringify(map || {}) };
-  const existing = await findOne("pipeline_meta", `slug="${META_SLUG}"`);
-  if (existing) {
-    await updateRecord("pipeline_meta", existing.id, body);
-  } else {
-    await createRecord("pipeline_meta", {
-      slug: META_SLUG,
-      next_id: 0,
-      data_epoch: 0,
-      ...body,
-    });
-  }
+  await savePresaleMapToCollection(map);
 }
 
 function defaultPresaleBlock(deal) {

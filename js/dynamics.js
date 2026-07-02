@@ -28,12 +28,7 @@ async function apiLoadDynamics(period, opts = {}) {
   if (window.ITMEN_API?.backend === "pocketbase") {
     return apiFetch(`/api/dynamics?${qs}`);
   }
-  if (window.ITMEN_API?.backend !== "gas") return null;
-  const url = `${window.ITMEN_API.gasUrl}?action=dynamics&${qs}`;
-  const res = await fetch(url, { redirect: "follow" });
-  const data = JSON.parse(await res.text());
-  if (data.error) throw new Error(data.error);
-  return data;
+  return null;
 }
 
 function formatDelta(n, suffix = "") {

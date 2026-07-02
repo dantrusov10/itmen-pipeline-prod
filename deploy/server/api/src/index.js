@@ -165,7 +165,29 @@ app.get("/api/pipeline", requireAuth(), async (req, res) => {
   try {
     const lite = req.query.lite === "1" || req.query.lite === "true";
     const includeArchived = req.query.includeArchived === "1";
-    const state = await loadPipelineState({ lite, includeArchived });
+    const all = req.query.all === "1" || req.query.all === "true";
+    const page = all ? null : (req.query.page != null ? Number(req.query.page) : null);
+    const perPage = req.query.perPage != null ? Number(req.query.perPage) : 100;
+    const listQuery = {
+      q: req.query.q,
+      mine: req.query.mine,
+      filters: req.query.filters,
+      sortKey: req.query.sortKey,
+      sortDir: req.query.sortDir,
+      presaleWs: req.query.presaleWs,
+      adminOwners: req.query.adminOwners,
+      page: req.query.page,
+      perPage: req.query.perPage,
+    };
+    const state = await loadPipelineState({
+      lite,
+      includeArchived,
+      page,
+      perPage,
+      all,
+      listQuery,
+      user: req.user,
+    });
     if (!state) return res.status(404).json({ error: "Пайплайн не найден" });
     res.json({ state });
   } catch (e) {
@@ -247,7 +269,16 @@ app.patch("/api/deals/:dealId", requireAuth(), async (req, res) => {
         error: "Стадию «Пилот Окончен» может установить только пре-сейл (успех или отказ пилота)",
       });
     }
-    const { saved, oldDeal, isNew: wasNew, nextId } = await saveSingleDeal(deal, { savedBy, isNew });
+    const { saved, oldDeal, isNew: wasNew, nextId } = await saveSingleDeal(deal, { savedBy, isNew, skipAudit: true });
+    if (req.body?.presalePatch && deal.id) {
+      const { savePresaleForDeal, syncPresaleFieldsToDealRow } = require("./presale-data");
+      const presaleRes = await savePresaleForDeal(deal.id, req.body.presalePatch, saved);
+      await syncPresaleFieldsToDealRow(deal.id, {
+        stage: presaleRes?.stage,
+        owner: presaleRes?.owner,
+      });
+      saved.presale = presaleRes;
+    }
     if (!wasNew && existing?.stage !== saved.stage) {
       try {
         if (saved.stage === "Отказ") {
@@ -330,7 +361,10 @@ app.patch("/api/deals/:dealId", requireAuth(), async (req, res) => {
     });
   } catch (e) {
     console.error("PATCH /api/deals", e);
-    res.status(500).json({ error: e.message || "Ошибка сохранения сделки" });
+    res.status(e.status || 500).json({
+      error: e.message || "Ошибка сохранения сделки",
+      alerts: e.alerts || undefined,
+    });
   }
 });
 
@@ -1082,7 +1116,7 @@ app.get("/api/profile", requireAuth(), async (req, res) => {
 
 app.patch("/api/profile", requireAuth(), async (req, res) => {
   try {
-    const profile = await updateProfile(req.user.id, req.body || {});
+    const profile = await updateProfile(req.user.id, req.body || {}, req.user);
     res.json({ ok: true, profile });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1092,7 +1126,7 @@ app.patch("/api/profile", requireAuth(), async (req, res) => {
 app.post("/api/profile/avatar", requireAuth(), upload.single("avatar"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Нет файла" });
-    const profile = await uploadAvatar(req.user.id, req.file);
+    const profile = await uploadAvatar(req.user.id, req.file, req.user);
     res.json({ ok: true, profile });
   } catch (e) {
     res.status(500).json({ error: e.message });
